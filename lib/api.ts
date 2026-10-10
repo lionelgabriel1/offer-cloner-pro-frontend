@@ -7,6 +7,11 @@ export type SitePage = { pageKey: string; requestedUrl: string; canonicalUrl: st
 export type CrawlPageListResponse = { jobId: string; status: CrawlStatus; progress: Progress | null; pagination: { offset: number; limit: number; total: number; hasMore: boolean }; pages: SitePage[] }
 export type CrawlReport = { jobId: string; status: CrawlStatus; progress: Progress | null; links: unknown[]; interactions: unknown[]; limitations: string[]; errors: string[]; generatedAt: string }
 
+export type EditorDomNode = { uid: string; tag: string; id?: string; classes?: string[]; attributes?: Record<string, string>; text?: string; children?: EditorDomNode[]; visible?: boolean; styles?: Record<string, string>; [key: string]: unknown }
+export type PageModel = { schemaVersion: '1.0'; projectId: string; sourceUrl: string; capturedAt: string; title: string; viewports: Array<Record<string, unknown>>; assets: Array<Record<string, unknown>>; metadata: { userAgent: string; durationMs: number; warnings: string[] }; navigation?: Record<string, unknown>; [key: string]: unknown }
+export type ProjectEditorResponse = { project: { id: string; sourceUrl: string; status: string }; model: PageModel }
+export type UpdateProjectModelResponse = { ok: true; status: 'edited'; model: PageModel }
+
 export type ApiClient = ReturnType<typeof createApiClient>
 
 export function createApiClient(baseUrl = import.meta.env?.VITE_API_BASE_URL) {
@@ -25,6 +30,8 @@ export function createApiClient(baseUrl = import.meta.env?.VITE_API_BASE_URL) {
     getPageModel: (id: string, pageKey: string, token?: string) => request<Record<string, unknown>>(`/api/crawl-jobs/${encodeURIComponent(id)}/pages/${encodeURIComponent(pageKey)}/page-model`, token),
     getReport: (id: string, format: 'json' | 'markdown' = 'json', token?: string) => format === 'markdown' ? request<string>(`/api/crawl-jobs/${encodeURIComponent(id)}/report?format=markdown`, token) : request<CrawlReport>(`/api/crawl-jobs/${encodeURIComponent(id)}/report?format=json`, token),
     getArtifacts: (id: string, path: string, token?: string) => request<Blob>(`/api/crawl-jobs/${encodeURIComponent(id)}/artifacts?path=${encodeURIComponent(path)}`, token),
+    getProjectEditor: (id: string, token?: string) => request<ProjectEditorResponse>(`/api/projects/${encodeURIComponent(id)}/editor`, token),
+    updateProjectEditor: (id: string, model: PageModel, token?: string) => request<UpdateProjectModelResponse>(`/api/projects/${encodeURIComponent(id)}/editor/model`, token, { method: 'PUT', body: JSON.stringify({ model }) }),
   }
 }
 
