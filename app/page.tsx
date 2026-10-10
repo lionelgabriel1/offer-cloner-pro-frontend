@@ -27,6 +27,7 @@ import {
   X,
 } from 'lucide-react'
 import { useState } from 'react'
+import type { FormEvent } from 'react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -56,6 +57,15 @@ const bars = [38, 52, 44, 68, 57, 82, 70, 91, 64, 76, 88, 72, 96, 82, 100, 86]
 
 export default function Page() {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [newAnalysisOpen, setNewAnalysisOpen] = useState(false)
+  const [analysisUrl, setAnalysisUrl] = useState('')
+  const [demoNotice, setDemoNotice] = useState('')
+
+  function handleStartAnalysis(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!analysisUrl.trim()) return
+    setDemoNotice('Pedido preparado. A API será chamada quando VITE_API_BASE_URL estiver configurada.')
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -132,7 +142,8 @@ export default function Page() {
         </header>
 
         <main className="mx-auto max-w-[1500px] px-5 py-7 sm:px-8 sm:py-9">
-          <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-2 text-sm font-medium text-primary">Workspace pessoal</p><h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Bom dia, Lara.</h2><p className="mt-1 text-sm text-muted-foreground">Aqui está o resumo das tuas análises autorizadas.</p></div><Button className="w-full gap-2 sm:w-auto"><Plus className="size-4" /> Nova análise</Button></div>
+          {newAnalysisOpen && <Card className="mb-7 border-primary/30 bg-primary/[0.04]"><CardHeader className="flex flex-row items-start justify-between gap-4 px-5 py-4 sm:px-6"><div><CardTitle className="text-sm font-semibold">Iniciar nova análise</CardTitle><p className="mt-1 text-xs text-muted-foreground">Introduz um URL autorizado para preparar o rastreamento.</p></div><Button variant="ghost" size="icon" onClick={() => setNewAnalysisOpen(false)} aria-label="Fechar nova análise"><X /></Button></CardHeader><CardContent className="px-5 pb-5 sm:px-6"><form className="flex flex-col gap-3 sm:flex-row" onSubmit={(event: FormEvent<HTMLFormElement>) => handleStartAnalysis(event)}><input aria-label="URL do site" value={analysisUrl} onChange={(event) => setAnalysisUrl(event.target.value)} placeholder="https://exemplo.pt" className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-sm outline-none ring-primary/30 placeholder:text-muted-foreground focus:ring-2" /><Button type="submit" className="gap-2"><Globe2 className="size-4" /> Preparar análise</Button></form>{demoNotice && <p className="mt-3 text-xs text-primary" role="status">{demoNotice}</p>}<p className="mt-3 text-[11px] text-muted-foreground">Demonstração visual: nenhum pedido foi enviado porque a API ainda não está configurada.</p></CardContent></Card>}
+          <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-2 text-sm font-medium text-primary">Workspace pessoal</p><h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Bom dia, Lara.</h2><p className="mt-1 text-sm text-muted-foreground">Aqui está o resumo das tuas análises autorizadas.</p></div><Button className="w-full gap-2 sm:w-auto" onClick={() => { setNewAnalysisOpen(true); setDemoNotice('') }}><Plus className="size-4" /> Nova análise</Button></div>
 
           <div className="mb-7 rounded-xl border border-primary/20 bg-primary/[0.06] px-4 py-3 sm:flex sm:items-center sm:justify-between"><div className="flex items-start gap-3"><div className="mt-0.5 rounded-full bg-primary/10 p-1.5 text-primary"><ShieldCheck className="size-4" /></div><div><p className="text-sm font-medium">Modo de demonstração visual</p><p className="mt-0.5 text-xs text-muted-foreground">A API ainda não está ligada. Os valores abaixo são dados de demonstração e não representam análises reais.</p></div></div><button className="mt-3 pl-11 text-xs font-medium text-primary hover:underline sm:mt-0 sm:pl-0">Configurar integração <ArrowUpRight className="ml-1 inline size-3" /></button></div>
 
