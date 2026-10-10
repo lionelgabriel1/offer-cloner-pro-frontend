@@ -12,6 +12,13 @@ export type PageModel = { schemaVersion: '1.0'; projectId: string; sourceUrl: st
 export type ProjectEditorResponse = { project: { id: string; sourceUrl: string; status: string }; model: PageModel }
 export type UpdateProjectModelResponse = { ok: true; status: 'edited'; model: PageModel }
 
+export class ApiError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
 export type ApiClient = ReturnType<typeof createApiClient>
 
 export function createApiClient(baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? process.env.VITE_API_BASE_URL) {
@@ -23,11 +30,17 @@ export function createApiClient(baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?
       const { getAccessToken } = await import('@/lib/supabase/client')
       accessToken = (await getAccessToken()) ?? undefined
     }
-    const response = await fetch(`${baseUrl}${path}`, { ...init, headers: { Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}), ...init?.headers } })
+    let response: Response
+    try {
+      response = await fetch(`${baseUrl}${path}`, { ...init, headers: { Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}), ...init?.headers } })
+    } catch {
+      throw new ApiError(0, 'Não foi possível contactar a API.')
+    }
     if (!response.ok) {
       const messages: Record<number, string> = { 401: 'Sessão ausente ou expirada.', 403: 'Não tens acesso a este recurso.', 404: 'Recurso não encontrado.', 409: 'Conflito: o recurso foi alterado.', 422: 'Os dados enviados são inválidos.', 503: 'Serviço temporariamente indisponível.' }
-      throw new Error(messages[response.status] ?? `API respondeu com ${response.status}.`)
+      throw new ApiError(response.status, messages[response.status] ?? 'Ocorreu um erro ao comunicar com a API.')
     }
+    if (response.status === 204) return undefined as T
     return response.json() as Promise<T>
   }
   return {
