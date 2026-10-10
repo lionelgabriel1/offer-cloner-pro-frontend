@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { Session } from '@supabase/supabase-js'
+import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client'
 
 type AuthContextValue = { session: Session | null; loading: boolean; configured: boolean; signOut: () => Promise<void> }
@@ -16,12 +16,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const supabase = createClient()
     if (!supabase) { setLoading(false); return }
-    supabase.auth.getSession().then(({ data, error }) => {
+    supabase.auth.getSession().then(({ data, error }: { data: { session: Session | null }; error: Error | null }) => {
       if (error) setSession(null)
       else setSession(data.session)
       setLoading(false)
     }).catch(() => { setSession(null); setLoading(false) })
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession))
+    const { data: listener } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, nextSession: Session | null) => setSession(nextSession))
     return () => listener.subscription.unsubscribe()
   }, [])
 

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, createApiClient } from '../lib/api'
+import { diagnoseIntegration, getMissingEnvironmentVariables, isSafeDiagnosticMessage } from '../lib/diagnostics'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -30,5 +31,23 @@ describe('cliente API protegido', () => {
   it('expõe erros tipados', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 409 }))
     await expect(createApiClient('https://api.test').getCrawlJob('job-1', 'token-test')).rejects.toBeInstanceOf(ApiError)
+  })
+})
+
+describe('diagnóstico de integração', () => {
+  it('distingue configuração ausente sem revelar valores', () => {
+    expect(getMissingEnvironmentVariables({ supabaseConfigured: false, apiConfigured: false })).toEqual([
+      'VITE_SUPABASE_URL',
+      'VITE_SUPABASE_PUBLISHABLE_KEY',
+      'VITE_API_BASE_URL',
+    ])
+    expect(isSafeDiagnosticMessage('A API não está acessível neste momento.')).toBe(true)
+    expect(isSafeDiagnosticMessage('Bearer token secreto')).toBe(false)
+  })
+
+  it('classifica falhas de sessão, autorização e recurso', () => {
+    expect(diagnoseIntegration({ supabaseConfigured: true, apiConfigured: true, error: new ApiError(401, 'safe') })).toBe('session-invalid')
+    expect(diagnoseIntegration({ supabaseConfigured: true, apiConfigured: true, error: new ApiError(403, 'safe') })).toBe('authorization-error')
+    expect(diagnoseIntegration({ supabaseConfigured: true, apiConfigured: true, error: new ApiError(404, 'safe') })).toBe('resource-not-found')
   })
 })
