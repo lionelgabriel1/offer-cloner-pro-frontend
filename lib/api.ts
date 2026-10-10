@@ -14,12 +14,20 @@ export type UpdateProjectModelResponse = { ok: true; status: 'edited'; model: Pa
 
 export type ApiClient = ReturnType<typeof createApiClient>
 
-export function createApiClient(baseUrl = import.meta.env?.VITE_API_BASE_URL) {
+export function createApiClient(baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? process.env.VITE_API_BASE_URL) {
   const configured = Boolean(baseUrl)
   async function request<T>(path: string, token?: string, init?: RequestInit): Promise<T> {
     if (!baseUrl) throw new Error('API não configurada: defina VITE_API_BASE_URL.')
-    const response = await fetch(`${baseUrl}${path}`, { ...init, headers: { Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init?.headers } })
-    if (!response.ok) throw new Error(`API respondeu com ${response.status}.`)
+    let accessToken = token
+    if (!accessToken && typeof window !== 'undefined') {
+      const { getAccessToken } = await import('@/lib/supabase/client')
+      accessToken = (await getAccessToken()) ?? undefined
+    }
+    const response = await fetch(`${baseUrl}${path}`, { ...init, headers: { Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}), ...init?.headers } })
+    if (!response.ok) {
+      const messages: Record<number, string> = { 401: 'Sessão ausente ou expirada.', 403: 'Não tens acesso a este recurso.', 404: 'Recurso não encontrado.', 409: 'Conflito: o recurso foi alterado.', 422: 'Os dados enviados são inválidos.', 503: 'Serviço temporariamente indisponível.' }
+      throw new Error(messages[response.status] ?? `API respondeu com ${response.status}.`)
+    }
     return response.json() as Promise<T>
   }
   return {

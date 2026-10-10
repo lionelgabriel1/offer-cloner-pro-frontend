@@ -1,6 +1,7 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
+import { AuthProvider } from '@/components/auth-provider'
 
 export const metadata: Metadata = {
   title: 'Offer Cloner Pro · Visão geral',
@@ -41,7 +42,7 @@ export default function RootLayout({
   return (
     <html lang="pt-PT" className="dark">
       <body className="antialiased">
-        {children}
+        <AuthProvider>{children}</AuthProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
