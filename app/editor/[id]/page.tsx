@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import type { CSSProperties, MouseEvent, ReactNode } from 'react'
 import { AlertCircle, ArrowLeft, Check, ChevronDown, ChevronRight, Eye, Monitor, Save, Search, Smartphone, Tablet, Undo2, Redo2, Layers3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -12,8 +13,25 @@ type VisualNode = EditorDomNode & { children?: VisualNode[] }
 type Viewport = 'desktop' | 'tablet' | 'mobile'
 
 const labelForNode = (node: VisualNode) => {
-  const tagLabels: Record<string, string> = { main: 'Página', section: 'Secção', h1: 'Título principal', h2: 'Título', h3: 'Subtítulo', p: 'Texto', img: 'Imagem', button: 'Botão', form: 'Formulário', video: 'Vídeo', nav: 'Navegação', footer: 'Rodapé' }
-  return tagLabels[node.tag.toLowerCase()] ?? node.text?.trim() ?? node.id ?? 'Elemento'
+  const tag = node.tag.toLowerCase()
+  const tagLabels: Record<string, string> = {
+    html: 'Documento', body: 'Página', main: 'Conteúdo principal', section: 'Secção',
+    header: 'Cabeçalho', footer: 'Rodapé', nav: 'Navegação', article: 'Artigo',
+    aside: 'Conteúdo lateral', div: 'Grupo de conteúdo', h1: 'Título principal',
+    h2: 'Título', h3: 'Subtítulo', h4: 'Título secundário', h5: 'Título pequeno',
+    h6: 'Título pequeno', p: 'Texto', span: 'Texto em linha', img: 'Imagem',
+    picture: 'Imagem responsiva', video: 'Vídeo', iframe: 'Conteúdo incorporado',
+    button: 'Botão', a: 'Ligação', form: 'Formulário', input: 'Campo de entrada',
+    textarea: 'Campo de texto', select: 'Lista de opções', option: 'Opção',
+    label: 'Rótulo', fieldset: 'Grupo de campos', legend: 'Título do formulário',
+    ul: 'Lista', ol: 'Lista numerada', li: 'Item da lista', blockquote: 'Citação',
+    strong: 'Texto em destaque', em: 'Texto enfatizado', small: 'Texto pequeno',
+    details: 'Secção expansível', summary: 'Título expansível', table: 'Tabela',
+    tr: 'Linha da tabela', td: 'Célula', th: 'Cabeçalho da tabela'
+  }
+  const text = node.text?.replace(/\s+/g, ' ').trim()
+  const label = tagLabels[tag] ?? 'Elemento personalizado'
+  return text ? `${label} — ${text.slice(0, 46)}${text.length > 46 ? '…' : ''}` : label
 }
 
 const childrenOf = (node: VisualNode) => Array.isArray(node.children) ? node.children : []
@@ -51,15 +69,25 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   }, [root, selectedId])
   const dirty = JSON.stringify(model) !== JSON.stringify(savedModel)
 
-  const updateText = (value: string) => {
+  const updateSelectedNode = (mutate: (node: VisualNode) => void) => {
     if (!model || !selectedNode) return
-    setUndoStack((items) => [...items.slice(-19), model]); setFuture([])
+    setUndoStack((items) => [...items.slice(-19), model])
+    setFuture([])
     const next = structuredClone(model) as PageModel
     const target = next.viewports.find((item) => item.kind === viewport)?.dom as VisualNode | undefined
-    const update = (node: VisualNode): boolean => { if (node.uid === selectedNode.uid) { node.text = value; return true }; return childrenOf(node).some(update) }
+    const update = (node: VisualNode): boolean => {
+      if (node.uid === selectedNode.uid) { mutate(node); return true }
+      return childrenOf(node).some(update)
+    }
     if (target) update(target)
     setModel(next)
+    setStatus('ready')
   }
+
+  const updateText = (value: string) => updateSelectedNode((node) => { node.text = value })
+  const updateAttribute = (key: string, value: string) => updateSelectedNode((node) => {
+    node.attributes = { ...(node.attributes ?? {}), [key]: value }
+  })
 
   const save = async () => {
     if (!model || !dirty) return
@@ -69,14 +97,14 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const undo = () => { const previous = undoStack.at(-1); if (!previous || !model) return; setFuture((items) => [model, ...items]); setUndoStack((items) => items.slice(0, -1)); setModel(previous) }
   const redo = () => { const next = future[0]; if (!next || !model) return; setUndoStack((items) => [...items, model]); setFuture((items) => items.slice(1)); setModel(next) }
 
-  const renderTree = (node: VisualNode, depth = 0): React.ReactNode => {
+  const renderTree = (node: VisualNode, depth = 0): ReactNode => {
     const children = childrenOf(node)
     const matches = !search || `${labelForNode(node)} ${node.text ?? ''}`.toLowerCase().includes(search.toLowerCase())
     if (!matches && !children.some((child) => JSON.stringify(child).toLowerCase().includes(search.toLowerCase()))) return null
     return <div key={node.uid}><button onClick={() => setSelectedId(node.uid)} className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs transition-colors ${selectedId === node.uid ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} style={{ paddingLeft: `${8 + depth * 14}px` }}>{children.length ? <ChevronRight className="size-3" /> : <span className="size-3" />}<span className="truncate">{labelForNode(node)}</span></button>{children.map((child) => renderTree(child, depth + 1))}</div>
   }
 
-  const renderPreview = (node: VisualNode, depth = 0): React.ReactNode => {
+  const renderPreview = (node: VisualNode, depth = 0): ReactNode => {
     const allowed = new Set(['main','div','section','header','footer','nav','article','aside','h1','h2','h3','h4','h5','h6','p','span','strong','em','small','ul','ol','li','a','button','img','video','form','label','input','textarea','blockquote'])
     const tag = allowed.has(node.tag.toLowerCase()) ? node.tag.toLowerCase() : 'div'
     const sourceStyles = node.styles ?? {}
@@ -91,18 +119,19 @@ export default function EditorPage({ params }: { params: { id: string } }) {
       flexDirection: 'flexDirection', alignItems: 'alignItems', justifyContent: 'justifyContent',
       gridTemplateColumns: 'gridTemplateColumns', overflow: 'overflow'
     }
-    const style: React.CSSProperties = {}
+    const style: CSSProperties = {}
     for (const [sourceKey, targetKey] of Object.entries(styleMap)) {
-      const value = sourceStyles[sourceKey] ?? sourceStyles[targetKey]
+      const kebabKey = sourceKey.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
+      const value = sourceStyles[sourceKey] ?? sourceStyles[targetKey] ?? sourceStyles[kebabKey]
       if (typeof value === 'string' && value.length < 160) (style as Record<string, string>)[targetKey] = value
     }
     const attrs = node.attributes ?? {}
     const className = `rounded-sm transition-shadow ${selectedId === node.uid ? 'outline outline-2 outline-blue-500 outline-offset-2' : 'hover:outline hover:outline-1 hover:outline-blue-300'}`
     const children = childrenOf(node).map((child) => renderPreview(child, depth + 1))
     const text = children.length ? null : node.text
-    const onClick = (event: React.MouseEvent) => { event.preventDefault(); event.stopPropagation(); setSelectedId(node.uid) }
+    const onClick = (event: MouseEvent<HTMLElement>) => { event.preventDefault(); event.stopPropagation(); setSelectedId(node.uid) }
     if (tag === 'img') {
-      const src = attrs.src || attrs['data-src'] || attrs['srcset']?.split(',')[0]?.trim().split(' ')[0]
+      const src = attrs.src || attrs['data-src'] || attrs['data-lazy-src'] || attrs['srcset']?.split(',')[0]?.trim().split(' ')[0]
       return <img key={node.uid} src={src} alt={attrs.alt || ''} onClick={onClick} className={className} style={{ ...style, maxWidth: '100%', objectFit: 'contain' }} />
     }
     if (tag === 'input') return <input key={node.uid} readOnly value={attrs.value || ''} placeholder={attrs.placeholder || ''} onClick={onClick} className={className} style={style} />
@@ -127,7 +156,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     <div className={previewOnly ? "grid min-h-[calc(100vh-104px)] grid-cols-1" : "grid min-h-[calc(100vh-104px)] lg:grid-cols-[240px_minmax(0,1fr)_300px]"}>
       {!previewOnly && <aside className="border-b border-border bg-background p-4 lg:border-b-0 lg:border-r"><div className="mb-4 flex items-center justify-between"><div><p className="text-sm font-semibold">Conteúdo</p><p className="mt-1 text-xs text-muted-foreground">Escolhe uma parte da página</p></div><Layers3 className="size-4 text-muted-foreground" /></div><div className="mb-4 flex items-center gap-2 rounded-md border border-border px-2"><Search className="size-3.5 text-muted-foreground" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Pesquisar conteúdo" className="h-8 min-w-0 flex-1 bg-transparent text-xs outline-none" /></div><div className="max-h-[55vh] overflow-y-auto">{root ? renderTree(root) : <p className="text-xs text-muted-foreground">Este modelo não tem conteúdo editável.</p>}</div></aside>}
       <section className={previewOnly ? "flex min-w-0 flex-col bg-muted/30 p-4 sm:p-6" : "flex min-w-0 flex-col bg-muted/30 p-4 sm:p-6"}><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-medium text-muted-foreground">Pré-visualização</p><p className="text-sm font-semibold">{selectedNode ? labelForNode(selectedNode) : 'Selecciona uma secção'}</p></div><div className="flex items-center gap-1 rounded-lg border border-border bg-background p-1"><Button variant={viewport === 'desktop' ? 'secondary' : 'ghost'} size="icon-sm" aria-label="Computador" onClick={() => setViewport('desktop')}><Monitor /></Button><Button variant={viewport === 'tablet' ? 'secondary' : 'ghost'} size="icon-sm" aria-label="Tablet" onClick={() => setViewport('tablet')}><Tablet /></Button><Button variant={viewport === 'mobile' ? 'secondary' : 'ghost'} size="icon-sm" aria-label="Telemóvel" onClick={() => setViewport('mobile')}><Smartphone /></Button></div></div><div className="flex flex-1 items-start justify-center overflow-auto rounded-xl border border-border bg-background p-4 shadow-sm sm:p-8"><div className={`min-h-[480px] w-full overflow-auto rounded-lg border border-dashed border-border bg-white p-5 text-black transition-all ${viewport === 'mobile' ? 'max-w-[390px]' : viewport === 'tablet' ? 'max-w-[720px]' : 'max-w-[1080px]'}`}><div className="mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 text-xs text-gray-500"><span className="size-2 rounded-full bg-emerald-500" /> Pré-visualização · {viewport === 'mobile' ? 'Telemóvel' : viewport === 'tablet' ? 'Tablet' : 'Computador'}</div>{root ? renderPreview(root) : <p className="py-24 text-center text-sm text-gray-500">Este modelo não contém uma página para pré-visualizar.</p>}</div></div></section>
-      {!previewOnly && <aside className="border-t border-border bg-background p-4 lg:border-t-0 lg:border-l"><div className="mb-5"><p className="text-sm font-semibold">Editar elemento</p><p className="mt-1 text-xs text-muted-foreground">Opções simples para o conteúdo seleccionado</p></div>{selectedNode ? <div className="flex flex-col gap-5"><div><label htmlFor="element-text" className="text-xs font-medium">Texto</label><textarea id="element-text" value={selectedNode.text ?? ''} onChange={(event) => updateText(event.target.value)} rows={5} className="mt-2 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder="Escreve o conteúdo…" /></div><Separator /><div><p className="text-xs font-medium">Informação</p><p className="mt-2 text-xs text-muted-foreground">Tipo de conteúdo: {labelForNode(selectedNode)}</p><p className="mt-1 text-xs text-muted-foreground">As opções de aparência avançada dependem do modelo devolvido pela API.</p></div><Card className="border-border bg-muted/30"><CardHeader className="p-4"><CardTitle className="text-xs">Pixels e acompanhamento</CardTitle></CardHeader><CardContent className="p-4 pt-0 text-xs text-muted-foreground">A configuração de pixels requer um endpoint de backend que não existe no contrato actual. Nenhum pixel é apresentado como activo.</CardContent></Card></div> : <div className="rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">Selecciona um título, texto, imagem ou botão para editar.</div>}{error && <p className="mt-5 text-xs text-destructive" role="alert">{error}</p>}</aside>}
+      {!previewOnly && <aside className="border-t border-border bg-background p-4 lg:border-t-0 lg:border-l"><div className="mb-5"><p className="text-sm font-semibold">Editar elemento</p><p className="mt-1 text-xs text-muted-foreground">Opções simples para o conteúdo seleccionado</p></div>{selectedNode ? <div className="flex flex-col gap-5"><div><label htmlFor="element-text" className="text-xs font-medium">{['img', 'video'].includes(selectedNode.tag.toLowerCase()) ? 'Descrição ou texto' : 'Texto do elemento'}</label><textarea id="element-text" value={selectedNode.text ?? ''} onChange={(event) => updateText(event.target.value)} rows={4} className="mt-2 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder="Escreve o conteúdo…" /></div>{['img', 'video', 'source'].includes(selectedNode.tag.toLowerCase()) && <div><label htmlFor="element-src" className="text-xs font-medium">URL do ficheiro</label><input id="element-src" value={selectedNode.attributes?.src ?? selectedNode.attributes?.['data-src'] ?? ''} onChange={(event) => updateAttribute('src', event.target.value)} className="mt-2 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder="https://…" /></div>}{selectedNode.tag.toLowerCase() === 'img' && <div><label htmlFor="element-alt" className="text-xs font-medium">Texto alternativo</label><input id="element-alt" value={selectedNode.attributes?.alt ?? ''} onChange={(event) => updateAttribute('alt', event.target.value)} className="mt-2 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder="Descrição acessível da imagem" /></div>}{selectedNode.tag.toLowerCase() === 'a' && <div><label htmlFor="element-href" className="text-xs font-medium">Destino da ligação</label><input id="element-href" value={selectedNode.attributes?.href ?? ''} onChange={(event) => updateAttribute('href', event.target.value)} className="mt-2 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder="https://…" /></div>}<Separator /><div><p className="text-xs font-medium">Tipo de elemento</p><p className="mt-2 text-sm">{labelForNode(selectedNode)}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">As propriedades apresentadas dependem do conteúdo capturado. A pré-visualização não executa formulários nem envia dados.</p></div><Card className="border-border bg-muted/30"><CardHeader className="p-4"><CardTitle className="text-xs">Pixels e acompanhamento</CardTitle></CardHeader><CardContent className="p-4 pt-0 text-xs text-muted-foreground">A configuração de pixels requer um endpoint de backend que não existe no contrato actual. Nenhum pixel é apresentado como activo.</CardContent></Card></div> : <div className="rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">Selecciona um título, texto, imagem ou botão para editar.</div>}{error && <p className="mt-5 text-xs text-destructive" role="alert">{error}</p>}</aside>}
     </div>
   </main>
 }
