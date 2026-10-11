@@ -58,6 +58,7 @@ export default function EditorPage() {
   const [viewport, setViewport] = useState<Viewport>('desktop')
   const [previewOnly, setPreviewOnly] = useState(false)
   const [search, setSearch] = useState('')
+  const [collapsedIds, setCollapsedIds] = useState<string[]>([])
   const [status, setStatus] = useState<'loading' | 'ready' | 'saving' | 'saved' | 'error'>('loading')
   const [error, setError] = useState('')
   const [undoStack, setUndoStack] = useState<PageModel[]>([])
@@ -103,9 +104,17 @@ export default function EditorPage() {
   const updateAttribute = (key: string, value: string) => updateSelectedNode((node) => {
     node.attributes = { ...(node.attributes ?? {}), [key]: value }
   })
-  const updateStyle = (key: string, value: string) => updateSelectedNode((node) => {
-    node.styles = { ...(node.styles ?? {}), [key]: value }
-  })
+  const updateStyle = (key: string, value: string) => {
+    // Keep inline CSS values simple and predictable; styles are data from a captured external page.
+    if (value.length > 160 || /[<>;]/.test(value)) return
+    updateSelectedNode((node) => {
+      node.styles = { ...(node.styles ?? {}), [key]: value }
+    })
+  }
+
+  const toggleCollapsed = (uid: string) => setCollapsedIds((items) =>
+    items.includes(uid) ? items.filter((item) => item !== uid) : [...items, uid]
+  )
 
   const save = async () => {
     if (!model || !dirty) return
@@ -118,8 +127,18 @@ export default function EditorPage() {
   const renderTree = (node: VisualNode, depth = 0): ReactNode => {
     const children = childrenOf(node)
     const matches = !search || `${labelForNode(node)} ${node.text ?? ''}`.toLowerCase().includes(search.toLowerCase())
-    if (!matches && !children.some((child) => JSON.stringify(child).toLowerCase().includes(search.toLowerCase()))) return null
-    return <div key={node.uid}><button onClick={() => setSelectedId(node.uid)} className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs transition-colors ${selectedId === node.uid ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} style={{ paddingLeft: `${8 + depth * 14}px` }}>{children.length ? <ChevronRight className="size-3" /> : <span className="size-3" />}<span className="truncate">{labelForNode(node)}</span></button>{children.map((child) => renderTree(child, depth + 1))}</div>
+    const descendantMatches = (candidate: VisualNode): boolean =>
+      `${labelForNode(candidate)} ${candidate.text ?? ''}`.toLowerCase().includes(search.toLowerCase()) ||
+      childrenOf(candidate).some(descendantMatches)
+    if (!matches && !children.some(descendantMatches)) return null
+    const expanded = search.length > 0 || !collapsedIds.includes(node.uid)
+    return <div key={node.uid}>
+      <div className="flex items-center gap-1" style={{ paddingLeft: `${depth * 14}px` }}>
+        {children.length > 0 ? <button type="button" aria-label={expanded ? 'Recolher elementos' : 'Expandir elementos'} aria-expanded={expanded} onClick={() => toggleCollapsed(node.uid)} className="flex size-6 shrink-0 items-center justify-center rounded hover:bg-muted"><ChevronRight className={`size-3 transition-transform ${expanded ? 'rotate-90' : ''}`} /></button> : <span className="size-6 shrink-0" />}
+        <button type="button" onClick={() => setSelectedId(node.uid)} aria-current={selectedId === node.uid ? 'true' : undefined} className={`flex min-w-0 flex-1 items-center rounded-md px-2 py-2 text-left text-xs transition-colors ${selectedId === node.uid ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}><span className="truncate">{labelForNode(node)}</span></button>
+      </div>
+      {expanded && children.map((child) => renderTree(child, depth + 1))}
+    </div>
   }
 
   const renderPreview = (node: VisualNode, depth = 0): ReactNode => {
@@ -135,7 +154,10 @@ export default function EditorPage() {
       lineHeight: 'lineHeight', textAlign: 'textAlign', border: 'border',
       borderRadius: 'borderRadius', boxShadow: 'boxShadow', opacity: 'opacity',
       flexDirection: 'flexDirection', alignItems: 'alignItems', justifyContent: 'justifyContent',
-      gridTemplateColumns: 'gridTemplateColumns', overflow: 'overflow'
+      gridTemplateColumns: 'gridTemplateColumns', overflow: 'overflow', fontStyle: 'fontStyle',
+      textDecoration: 'textDecoration', borderColor: 'borderColor', borderWidth: 'borderWidth',
+      maxWidth: 'maxWidth', minHeight: 'minHeight', objectFit: 'objectFit',
+      flexWrap: 'flexWrap', whiteSpace: 'whiteSpace', letterSpacing: 'letterSpacing'
     }
     const style: CSSProperties = {}
     for (const [sourceKey, targetKey] of Object.entries(styleMap)) {
@@ -144,16 +166,16 @@ export default function EditorPage() {
       if (typeof value === 'string' && value.length < 160) (style as Record<string, string>)[targetKey] = value
     }
     const attrs = node.attributes ?? {}
-    const className = selectedId === node.uid ? 'outline outline-2 outline-blue-500 outline-offset-2' : 'hover:outline hover:outline-1 hover:outline-blue-300'
+    const className = previewOnly ? '' : selectedId === node.uid ? 'outline outline-2 outline-blue-500 outline-offset-2' : 'hover:outline hover:outline-1 hover:outline-blue-300'
     const children = childrenOf(node).map((child) => renderPreview(child, depth + 1))
     const text = children.length ? null : node.text
-    const onClick = (event: MouseEvent<HTMLElement>) => { event.preventDefault(); event.stopPropagation(); setSelectedId(node.uid) }
+    const onClick = (event: MouseEvent<HTMLElement>) => { event.preventDefault(); event.stopPropagation(); if (!previewOnly) setSelectedId(node.uid) }
     if (tag === 'img') {
       const src = attrs.src || attrs['data-src'] || attrs['data-lazy-src'] || attrs['srcset']?.split(',')[0]?.trim().split(' ')[0]
       return <img key={node.uid} src={src} alt={attrs.alt || ''} onClick={onClick} className={className} style={{ ...style, maxWidth: '100%', objectFit: 'contain' }} />
     }
-    if (tag === 'input') return <input key={node.uid} readOnly value={attrs.value || ''} placeholder={attrs.placeholder || ''} onClick={onClick} className={className} style={style} />
-    if (tag === 'textarea') return <textarea key={node.uid} readOnly value={text || attrs.value || ''} onClick={onClick} className={className} style={style} />
+    if (tag === 'input') return <input key={node.uid} readOnly value={attrs.value || ''} placeholder={attrs.placeholder || ''} type={attrs.type || 'text'} onClick={onClick} className={className} style={style} />
+    if (tag === 'textarea') return <textarea key={node.uid} readOnly value={text || attrs.value || ''} placeholder={attrs.placeholder || ''} onClick={onClick} className={className} style={style} />
     if (tag === 'a') return <a key={node.uid} href={attrs.href || "#"} onClick={onClick} className={className} style={style}>{text}{children}</a>
     if (tag === 'button') return <button key={node.uid} type="button" onClick={onClick} className={className} style={style}>{text}{children}</button>
     if (tag === 'video') return <div key={node.uid} onClick={onClick} className={className} style={{ ...style, minHeight: 100, background: '#171717', color: '#d4d4d4', display: 'grid', placeItems: 'center' }}>Vídeo</div>
