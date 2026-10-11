@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, createApiClient } from '../lib/api'
-import { diagnoseIntegration, getMissingEnvironmentVariables, isSafeDiagnosticMessage } from '../lib/diagnostics'
+import {
+  diagnoseIntegration,
+  getIntegrationConfig,
+  getMissingEnvironmentVariables,
+  isSafeDiagnosticMessage,
+} from '../lib/diagnostics'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -35,11 +40,32 @@ describe('cliente API protegido', () => {
 })
 
 describe('diagnóstico de integração', () => {
+  it('prefere variáveis NEXT_PUBLIC e mantém fallback VITE', () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://next.supabase.co')
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'sb_publishable_next')
+    vi.stubEnv('NEXT_PUBLIC_API_BASE_URL', 'https://next.api.test')
+    vi.stubEnv('VITE_SUPABASE_URL', '')
+    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', '')
+    vi.stubEnv('VITE_API_BASE_URL', '')
+
+    expect(getIntegrationConfig()).toEqual({ supabaseConfigured: true, apiConfigured: true })
+    expect(getMissingEnvironmentVariables()).toEqual([])
+
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', '')
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY', '')
+    vi.stubEnv('NEXT_PUBLIC_API_BASE_URL', '')
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://legacy.supabase.co')
+    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'sb_publishable_legacy')
+    vi.stubEnv('VITE_API_BASE_URL', 'https://legacy.api.test')
+
+    expect(getIntegrationConfig()).toEqual({ supabaseConfigured: true, apiConfigured: true })
+  })
+
   it('distingue configuração ausente sem revelar valores', () => {
     expect(getMissingEnvironmentVariables({ supabaseConfigured: false, apiConfigured: false })).toEqual([
-      'VITE_SUPABASE_URL',
-      'VITE_SUPABASE_PUBLISHABLE_KEY',
-      'VITE_API_BASE_URL',
+      'NEXT_PUBLIC_SUPABASE_URL',
+      'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
+      'NEXT_PUBLIC_API_BASE_URL',
     ])
     expect(isSafeDiagnosticMessage('A API não está acessível neste momento.')).toBe(true)
     expect(isSafeDiagnosticMessage('Bearer token secreto')).toBe(false)
