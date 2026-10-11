@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useParams } from 'next/navigation'
 import { AlertTriangle, ArrowLeft, FileCode2, FileImage, FileText, FolderTree, Search, Server, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -19,8 +20,9 @@ const tabs = [
 type SiteModelView = { errors?: string[]; limitations?: string[]; interactions?: unknown[]; pages?: unknown[] }
 type ArtifactAsset = Record<string, unknown> & { localPath?: string; path?: string; mimeType?: string; originalUrl?: string; downloaded?: boolean }
 
-export default function ResultsPage({ params }: { params: { id: string } }) {
-  const id = params.id
+export default function ResultsPage() {
+  const { id } = useParams<{ id: string }>()
+  const id = id
   const [active, setActive] = useState<(typeof tabs)[number]['id']>('overview')
   const [query, setQuery] = useState('')
   const [job, setJob] = useState<CrawlJobStatus | null>(null)
