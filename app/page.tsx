@@ -131,7 +131,7 @@ export default function Page() {
             <div className="flex items-center gap-2 text-xs text-muted-foreground"><span>Workspace</span><span className="text-border">/</span><span className="text-foreground">Visão geral</span></div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="hidden h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs text-muted-foreground md:flex"><Search className="size-3.5" /><span>Pesquisar</span><kbd className="ml-5 rounded border border-border px-1.5 py-0.5 text-[10px]">⌘ K</kbd></div>
+            
             <Button variant="outline" size="sm" className="hidden gap-2 sm:inline-flex" onClick={() => router.push('/documentation')}><CircleHelp className="size-3.5" /> Ajuda</Button>
           </div>
         </header>
