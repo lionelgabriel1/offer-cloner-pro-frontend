@@ -22,7 +22,6 @@ type ArtifactAsset = Record<string, unknown> & { localPath?: string; path?: stri
 
 export default function ResultsPage() {
   const { id } = useParams<{ id: string }>()
-  const id = id
   const [active, setActive] = useState<(typeof tabs)[number]['id']>('overview')
   const [query, setQuery] = useState('')
   const [job, setJob] = useState<CrawlJobStatus | null>(null)
