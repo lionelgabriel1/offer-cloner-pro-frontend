@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { createElement, useEffect, useMemo, useState } from 'react'
 import type { CSSProperties, MouseEvent, ReactNode } from 'react'
 import { AlertCircle, ArrowLeft, ChevronRight, Eye, Monitor, Save, Search, Smartphone, Tablet, Undo2, Redo2, Layers3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -139,7 +139,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     if (tag === 'a') return <a key={node.uid} href={attrs.href || "#"} onClick={onClick} className={className} style={style}>{text}{children}</a>
     if (tag === 'button') return <button key={node.uid} type="button" onClick={onClick} className={className} style={style}>{text}{children}</button>
     if (tag === 'video') return <div key={node.uid} onClick={onClick} className={className} style={{ ...style, minHeight: 100, background: '#171717', color: '#d4d4d4', display: 'grid', placeItems: 'center' }}>Vídeo</div>
-    return React.createElement(tag, { key: node.uid, onClick, className, style }, text, ...children)
+    return createElement(tag, { key: node.uid, onClick, className, style }, text, ...children)
   }
 
   if (status === 'loading') return <main className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">A carregar o editor…</main>
