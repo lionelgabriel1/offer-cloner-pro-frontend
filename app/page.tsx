@@ -72,11 +72,7 @@ export default function Page() {
     }
   }
 
-  function navigate(href: string, label: string) {
-    if (href === '/projects' || href === '/crawls') {
-      setApiNotice(`${label}: esta área precisa de um endpoint de listagem no backend. Nenhum dado fictício será apresentado.`)
-      return
-    }
+  function navigate(href: string, _label?: string) {
     router.push(href)
     setMobileOpen(false)
   }
