@@ -90,10 +90,10 @@ export default function EditorPage({ params }: { params: { id: string } }) {
       flexDirection: 'flexDirection', alignItems: 'alignItems', justifyContent: 'justifyContent',
       gridTemplateColumns: 'gridTemplateColumns', overflow: 'overflow'
     }
-    const style: Record<string, string> = {}
+    const style: React.CSSProperties = {}
     for (const [sourceKey, targetKey] of Object.entries(styleMap)) {
       const value = sourceStyles[sourceKey] ?? sourceStyles[targetKey]
-      if (typeof value === 'string' && value.length < 160) style[targetKey] = value
+      if (typeof value === 'string' && value.length < 160) (style as Record<string, string>)[targetKey] = value
     }
     const attrs = node.attributes ?? {}
     const className = `rounded-sm transition-shadow ${selectedId === node.uid ? 'outline outline-2 outline-blue-500 outline-offset-2' : 'hover:outline hover:outline-1 hover:outline-blue-300'}`
