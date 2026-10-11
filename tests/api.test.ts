@@ -38,6 +38,14 @@ describe('cliente API protegido', () => {
     await expect(createApiClient('https://api.test').createCrawlJob('https://example.com')).rejects.toEqual(expect.objectContaining({ status: 503, message: 'Serviço temporariamente indisponível.' }))
   })
 
+  it('não permite que URLs inválidos cheguem ao cliente da API', () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    for (const value of ['javascript:alert(1)', 'file:///tmp/site.html', 'ftp://example.com', 'not a url']) {
+      expect(isValidHttpUrl(value)).toBe(false)
+    }
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('envia o Bearer token e o corpo PUT', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
     const client = createApiClient('https://api.test')
