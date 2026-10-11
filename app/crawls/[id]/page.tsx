@@ -15,7 +15,6 @@ const terminal = (status: string) => ['completed', 'partial', 'failed', 'paused'
 
 export default function CrawlPage() {
   const { id } = useParams<{ id: string }>()
-  const id = id
   const [job, setJob] = useState<CrawlJobStatus | null>(null)
   const [pageResponse, setPageResponse] = useState<CrawlPageListResponse | null>(null)
   const [pages, setPages] = useState<SitePage[]>([])
