@@ -26,7 +26,7 @@ export type ApiClient = ReturnType<typeof createApiClient>
 export function createApiClient(baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? process.env.VITE_API_BASE_URL) {
   const configured = Boolean(baseUrl)
   async function request<T>(path: string, token?: string, init?: RequestInit): Promise<T> {
-    if (!baseUrl) throw new Error('API não configurada: defina VITE_API_BASE_URL.')
+    if (!baseUrl) throw new Error('API não configurada: defina NEXT_PUBLIC_API_BASE_URL.')
     let accessToken = token
     if (!accessToken && typeof window !== 'undefined') {
       const { getAccessToken } = await import('@/lib/supabase/client')

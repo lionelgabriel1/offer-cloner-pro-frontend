@@ -7,7 +7,10 @@ import {
   isSafeDiagnosticMessage,
 } from '../lib/diagnostics'
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllEnvs()
+})
 
 describe('cliente API protegido', () => {
   it('envia o Bearer token e o corpo PUT', async () => {
