@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, ArrowLeft, FileCode2, FileImage, FileText, FolderTree, Search, Server, Sparkles } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, FileCode2, FileImage, FileText, FolderTree, Search, Server } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,10 +16,6 @@ const tabs = [
   { id: 'resources', label: 'Recursos', icon: Server },
   { id: 'report', label: 'Relatório', icon: FileText },
 ] as const
-const demoPages: SitePage[] = [
-  { pageKey: 'demo-home', title: 'Página inicial', requestedUrl: 'https://demo.example.com/', status: 'analyzed' as const, depth: 0, screenshotPaths: [], stateIds: [], redirects: [], linksFound: 1, assetsFound: 0, assetsDownloaded: 0, assetsFailed: 0, limitations: [], canonicalUrl: 'https://demo.example.com/' },
-  { pageKey: 'demo-pricing', title: 'Preços', requestedUrl: 'https://demo.example.com/pricing', status: 'pending' as const, depth: 1, screenshotPaths: [], stateIds: [], redirects: [], linksFound: 0, assetsFound: 0, assetsDownloaded: 0, assetsFailed: 0, limitations: [], canonicalUrl: 'https://demo.example.com/pricing' },
-]
 type SiteModelView = { errors?: string[]; limitations?: string[]; interactions?: unknown[]; pages?: unknown[] }
 type ArtifactAsset = Record<string, unknown> & { localPath?: string; path?: string; mimeType?: string; originalUrl?: string; downloaded?: boolean }
 
@@ -77,17 +73,17 @@ export default function ResultsPage({ params }: { params: { id: string } }) {
     return () => { alive = false }
   }, [id, active, reportFormat])
 
-  const visiblePages = useMemo(() => (isApiConfigured ? pages : demoPages).filter(item => `${item.title ?? ''} ${item.requestedUrl}`.toLowerCase().includes(query.toLowerCase())), [pages, query])
+  const visiblePages = useMemo(() => pages.filter(item => `${item.title ?? ''} ${item.requestedUrl}`.toLowerCase().includes(query.toLowerCase())), [pages, query])
   const selectedPage = pages.find(page => page.pageKey === selectedPageKey) ?? null
   const viewports = Array.isArray(pageModel?.viewports) ? pageModel.viewports as Array<Record<string, unknown>> : []
   const assets = Array.isArray(pageModel?.assets) ? pageModel.assets as ArtifactAsset[] : []
   const screenshotPaths = selectedPage?.screenshotPaths ?? []
 
   return <div className="min-h-screen bg-background text-foreground">
-    <header className="flex h-16 items-center gap-4 border-b border-border px-5 sm:px-8"><Link href={`/crawls/${id}`} aria-label="Voltar ao rastreamento"><Button variant="ghost" size="icon"><ArrowLeft /></Button></Link><div><p className="text-xs text-muted-foreground">Resultados / {id}</p><h1 className="font-semibold">Resultados da análise</h1></div><Badge variant="secondary" className="ml-auto">{job ? job.status : isApiConfigured ? loading ? 'A carregar…' : 'Sem dados' : 'Demonstração'}</Badge></header>
+    <header className="flex h-16 items-center gap-4 border-b border-border px-5 sm:px-8"><Link href={`/crawls/${id}`} aria-label="Voltar ao rastreamento"><Button variant="ghost" size="icon"><ArrowLeft /></Button></Link><div><p className="text-xs text-muted-foreground">Resultados / {id}</p><h1 className="font-semibold">Resultados da análise</h1></div><Badge variant="secondary" className="ml-auto">{job ? job.status : loading ? 'A carregar…' : 'Sem dados'}</Badge></header>
     <main className="mx-auto max-w-6xl px-5 py-7 sm:px-8">
-      <div className="mb-6"><p className="mb-2 text-sm font-medium text-primary">Workspace / Resultados</p><h2 className="text-2xl font-semibold tracking-tight">Explorar análise</h2><p className="mt-1 break-all text-sm text-muted-foreground">{job?.seedUrl ?? 'Consulta páginas, estrutura, recursos e relatório sem alterar os dados do backend.'}</p></div>
-      {!isApiConfigured && <div className="mb-6 flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/[0.06] p-4"><Sparkles className="mt-0.5 size-4 shrink-0 text-primary" /><div><p className="text-sm font-medium">Modo de demonstração visual</p><p className="mt-1 text-xs text-muted-foreground">Define NEXT_PUBLIC_API_BASE_URL e inicia sessão Supabase. Os exemplos são fictícios e não representam resultados reais.</p></div></div>}
+      <div className="mb-6"><p className="mb-2 text-sm font-medium text-primary">Workspace / Resultados</p><h2 className="text-2xl font-semibold tracking-tight">Explorar análise</h2><p className="mt-1 break-all text-sm text-muted-foreground">{job?.seedUrl ?? 'Os detalhes da análise aparecerão quando a API devolver dados reais.'}</p></div>
+      {!isApiConfigured && <div className="mb-6 rounded-xl border border-border bg-muted/30 p-4 text-sm text-muted-foreground">A API ainda não está configurada. Esta página não usa resultados de demonstração.</div>}
       {error && <p className="mb-5 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive" role="alert">{error}</p>}
       <div className="flex gap-1 overflow-x-auto border-b border-border pb-px" role="tablist" aria-label="Secções dos resultados">{tabs.map(tab => { const Icon = tab.icon; return <button key={tab.id} role="tab" aria-selected={active === tab.id} onClick={() => setActive(tab.id)} className={`flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-xs font-medium transition-colors ${active === tab.id ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}><Icon className="size-3.5" />{tab.label}</button> })}</div>
       <section className="mt-6">
