@@ -30,7 +30,20 @@ const labelForNode = (node: VisualNode) => {
     tr: 'Linha da tabela', td: 'Célula', th: 'Cabeçalho da tabela'
   }
   const text = node.text?.replace(/\s+/g, ' ').trim()
-  const label = tagLabels[tag] ?? 'Elemento personalizado'
+  const hints = [node.id ?? '', ...(node.classes ?? []), ...Object.values(node.attributes ?? {}).filter((value) => typeof value === 'string').slice(0, 12)].join(' ').toLowerCase()
+  const semanticLabels: Array<[RegExp, string]> = [
+    [/testimonial|depoimento|review|feedback/, 'Depoimento'],
+    [/\bfaq\b|frequently-asked|perguntas-frequentes/, 'Perguntas frequentes'],
+    [/quiz|question|pergunta/, 'Pergunta do quiz'],
+    [/answer|resposta|option/, 'Opção de resposta'],
+    [/pricing|price|preco|preço|plan-card/, 'Preço ou plano'],
+    [/countdown|timer|contagem/, 'Contador'],
+    [/progress|progresso/, 'Barra de progresso'],
+    [/hero|banner/, 'Secção principal'],
+    [/cta|call-to-action/, 'Chamada para acção']
+  ]
+  const semantic = semanticLabels.find(([pattern]) => pattern.test(hints))?.[1]
+  const label = semantic ?? tagLabels[tag] ?? 'Elemento personalizado'
   return text ? `${label} — ${text.slice(0, 46)}${text.length > 46 ? '…' : ''}` : label
 }
 
@@ -126,7 +139,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
       if (typeof value === 'string' && value.length < 160) (style as Record<string, string>)[targetKey] = value
     }
     const attrs = node.attributes ?? {}
-    const className = `rounded-sm transition-shadow ${selectedId === node.uid ? 'outline outline-2 outline-blue-500 outline-offset-2' : 'hover:outline hover:outline-1 hover:outline-blue-300'}`
+    const className = selectedId === node.uid ? 'outline outline-2 outline-blue-500 outline-offset-2' : 'hover:outline hover:outline-1 hover:outline-blue-300'
     const children = childrenOf(node).map((child) => renderPreview(child, depth + 1))
     const text = children.length ? null : node.text
     const onClick = (event: MouseEvent<HTMLElement>) => { event.preventDefault(); event.stopPropagation(); setSelectedId(node.uid) }
