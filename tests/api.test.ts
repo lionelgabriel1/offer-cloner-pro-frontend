@@ -7,7 +7,10 @@ import {
   isSafeDiagnosticMessage,
 } from '../lib/diagnostics'
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllEnvs()
+})
 
 describe('cliente API protegido', () => {
   it.each([
@@ -23,6 +26,11 @@ describe('cliente API protegido', () => {
   it('usa a resposta real de /health', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
     await expect(createApiClient('https://api.test').checkHealth()).resolves.toEqual({ ok: true })
+  })
+
+  it('trata falha HTTP do endpoint /health', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('unavailable', { status: 503 }))
+    await expect(createApiClient('https://api.test').checkHealth()).rejects.toEqual(expect.objectContaining({ status: 503, message: 'Serviço temporariamente indisponível.' }))
   })
 
   it('trata erro ao iniciar um rastreamento', async () => {
