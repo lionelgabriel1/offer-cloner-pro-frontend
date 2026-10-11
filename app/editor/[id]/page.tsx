@@ -49,7 +49,8 @@ const labelForNode = (node: VisualNode) => {
 
 const childrenOf = (node: VisualNode) => Array.isArray(node.children) ? node.children : []
 
-export default function EditorPage({ params }: { params: { id: string } }) {
+export default function EditorPage() {
+  const { id } = useParams<{ id: string }>()
   const [model, setModel] = useState<PageModel | null>(null)
   const [savedModel, setSavedModel] = useState<PageModel | null>(null)
   const [selectedId, setSelectedId] = useState('')
@@ -64,12 +65,12 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   useEffect(() => {
     let active = true
     if (!isApiConfigured) { setError('A API não está configurada. Não é possível abrir um modelo real.'); setStatus('error'); return () => { active = false } }
-    apiClient.getProjectEditor(params.id).then((response) => {
+    apiClient.getProjectEditor(id).then((response) => {
       if (!active) return
       setModel(response.model); setSavedModel(response.model); setSelectedId((response.model.viewports.find((item) => item.kind === 'desktop')?.dom as VisualNode | undefined)?.uid ?? ''); setStatus('ready')
     }).catch((cause: unknown) => { if (active) { setError(cause instanceof Error ? cause.message : 'Não foi possível carregar o modelo.'); setStatus('error') } })
     return () => { active = false }
-  }, [params.id])
+  }, [id])
 
   const root = useMemo(() => {
     const viewportRoot = model?.viewports.find((item) => item.kind === viewport)?.dom as VisualNode | undefined
@@ -105,7 +106,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const save = async () => {
     if (!model || !dirty) return
     setStatus('saving'); setError('')
-    try { const response = await apiClient.updateProjectEditor(params.id, model); setModel(response.model); setSavedModel(response.model); setStatus('saved') } catch (cause: unknown) { setError(cause instanceof Error ? cause.message : 'Não foi possível guardar as alterações.'); setStatus('error') }
+    try { const response = await apiClient.updateProjectEditor(id, model); setModel(response.model); setSavedModel(response.model); setStatus('saved') } catch (cause: unknown) { setError(cause instanceof Error ? cause.message : 'Não foi possível guardar as alterações.'); setStatus('error') }
   }
   const undo = () => { const previous = undoStack.at(-1); if (!previous || !model) return; setFuture((items) => [model, ...items]); setUndoStack((items) => items.slice(0, -1)); setModel(previous) }
   const redo = () => { const next = future[0]; if (!next || !model) return; setUndoStack((items) => [...items, model]); setFuture((items) => items.slice(1)); setModel(next) }
