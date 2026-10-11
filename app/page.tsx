@@ -26,13 +26,15 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { useState } from 'react'
+import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import { apiClient, isApiConfigured, type CrawlJobStatus } from '@/lib/api'
 
 const navigation = [
   { label: 'Visão geral', icon: LayoutDashboard, active: true },
@@ -60,11 +62,79 @@ export default function Page() {
   const [newAnalysisOpen, setNewAnalysisOpen] = useState(false)
   const [analysisUrl, setAnalysisUrl] = useState('')
   const [demoNotice, setDemoNotice] = useState('')
+  const [activeJob, setActiveJob] = useState<CrawlJobStatus | null>(null)
+  const [startingAnalysis, setStartingAnalysis] = useState(false)
+  const [jobError, setJobError] = useState('')
+  const [apiHealth, setApiHealth] = useState<'unconfigured' | 'checking' | 'online' | 'offline'>('unconfigured')
 
-  function handleStartAnalysis(event: FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    if (!isApiConfigured) { setApiHealth('unconfigured'); return }
+    let alive = true
+    setApiHealth('checking')
+    void apiClient.getHealth().then(() => { if (alive) setApiHealth('online') }).catch(() => { if (alive) setApiHealth('offline') })
+    return () => { alive = false }
+  }, [])
+
+  useEffect(() => {
+    const jobId = activeJob?.jobId
+    if (!jobId || ['completed', 'partial', 'failed', 'paused', 'cancelled'].includes(activeJob.status)) return
+    let alive = true
+    let timer: ReturnType<typeof setTimeout>
+    const poll = async () => {
+      try {
+        const latest = await apiClient.getCrawlJob(jobId)
+        if (!alive) return
+        setActiveJob(latest)
+        if (!['completed', 'partial', 'failed', 'paused', 'cancelled'].includes(latest.status)) timer = setTimeout(poll, 1500)
+      } catch (cause) {
+        if (!alive) return
+        setJobError(cause instanceof Error ? cause.message : 'Não foi possível atualizar o progresso.')
+        timer = setTimeout(poll, 5000)
+      }
+    }
+    timer = setTimeout(poll, 1200)
+    return () => { alive = false; clearTimeout(timer) }
+  }, [activeJob?.jobId, activeJob?.status])
+
+  async function handleStartAnalysis(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!analysisUrl.trim()) return
-    setDemoNotice('Pedido preparado. A API será chamada quando VITE_API_BASE_URL estiver configurada.')
+    if (!isApiConfigured) {
+      setDemoNotice('Define NEXT_PUBLIC_API_BASE_URL na Vercel para ligar à API.')
+      return
+    }
+    setStartingAnalysis(true)
+    setJobError('')
+    setDemoNotice('')
+    try {
+      const created = await apiClient.createCrawlJob(analysisUrl.trim())
+      const latest = await apiClient.getCrawlJob(created.jobId)
+      setActiveJob(latest)
+      setDemoNotice(`Rastreamento iniciado: ${created.jobId}`)
+    } catch (cause) {
+      setJobError(cause instanceof Error ? cause.message : 'Não foi possível iniciar o rastreamento.')
+    } finally {
+      setStartingAnalysis(false)
+    }
+  }
+
+  async function cancelActiveJob() {
+    if (!activeJob) return
+    try {
+      await apiClient.cancelCrawlJob(activeJob.jobId)
+      setDemoNotice('Cancelamento pedido; o crawler termina primeiro a ação de browser em curso.')
+      setJobError('')
+    } catch (cause) { setJobError(cause instanceof Error ? cause.message : 'Não foi possível cancelar o rastreamento.') }
+  }
+
+  async function resumeActiveJob() {
+    if (!activeJob) return
+    try {
+      await apiClient.resumeCrawlJob(activeJob.jobId, activeJob.options)
+      setActiveJob(await apiClient.getCrawlJob(activeJob.jobId))
+      setDemoNotice('Retoma do rastreamento iniciada.')
+      setJobError('')
+    } catch (cause) { setJobError(cause instanceof Error ? cause.message : 'Não foi possível retomar o rastreamento.') }
   }
 
   return (
@@ -142,7 +212,7 @@ export default function Page() {
         </header>
 
         <main className="mx-auto max-w-[1500px] px-5 py-7 sm:px-8 sm:py-9">
-          {newAnalysisOpen && <Card className="mb-7 border-primary/30 bg-primary/[0.04]"><CardHeader className="flex flex-row items-start justify-between gap-4 px-5 py-4 sm:px-6"><div><CardTitle className="text-sm font-semibold">Iniciar nova análise</CardTitle><p className="mt-1 text-xs text-muted-foreground">Introduz um URL autorizado para preparar o rastreamento.</p></div><Button variant="ghost" size="icon" onClick={() => setNewAnalysisOpen(false)} aria-label="Fechar nova análise"><X /></Button></CardHeader><CardContent className="px-5 pb-5 sm:px-6"><form className="flex flex-col gap-3 sm:flex-row" onSubmit={(event: FormEvent<HTMLFormElement>) => handleStartAnalysis(event)}><input aria-label="URL do site" value={analysisUrl} onChange={(event) => setAnalysisUrl(event.target.value)} placeholder="https://exemplo.pt" className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-sm outline-none ring-primary/30 placeholder:text-muted-foreground focus:ring-2" /><Button type="submit" className="gap-2"><Globe2 className="size-4" /> Preparar análise</Button></form>{demoNotice && <p className="mt-3 text-xs text-primary" role="status">{demoNotice}</p>}<p className="mt-3 text-[11px] text-muted-foreground">Demonstração visual: nenhum pedido foi enviado porque a API ainda não está configurada.</p></CardContent></Card>}
+          {newAnalysisOpen && <Card className="mb-7 border-primary/30 bg-primary/[0.04]"><CardHeader className="flex flex-row items-start justify-between gap-4 px-5 py-4 sm:px-6"><div><CardTitle className="text-sm font-semibold">Iniciar nova análise</CardTitle><p className="mt-1 text-xs text-muted-foreground">Introduz um URL autorizado para preparar o rastreamento.</p></div><Button variant="ghost" size="icon" onClick={() => setNewAnalysisOpen(false)} aria-label="Fechar nova análise"><X /></Button></CardHeader><CardContent className="px-5 pb-5 sm:px-6"><form className="flex flex-col gap-3 sm:flex-row" onSubmit={(event: FormEvent<HTMLFormElement>) => handleStartAnalysis(event)}><input aria-label="URL do site" value={analysisUrl} onChange={(event) => setAnalysisUrl(event.target.value)} placeholder="https://exemplo.pt" className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-sm outline-none ring-primary/30 placeholder:text-muted-foreground focus:ring-2" /><Button type="submit" className="gap-2" disabled={startingAnalysis || !analysisUrl.trim()}><Globe2 className="size-4" />{startingAnalysis ? "A iniciar…" : "Iniciar rastreamento"}</Button></form>{demoNotice && <p className="mt-3 text-xs text-primary" role="status">{demoNotice}</p>}<p className="mt-3 text-[11px] text-muted-foreground">{isApiConfigured ? 'O pedido será enviado à API com o token da sessão Supabase.' : 'Demonstração visual: define NEXT_PUBLIC_API_BASE_URL para ligar à API.'}</p></CardContent></Card>}{activeJob && <Card className="mb-7 border-primary/30"><CardHeader className="flex flex-row items-center justify-between gap-4 px-5 py-4 sm:px-6"><div><CardTitle className="text-sm font-semibold">Rastreamento ativo</CardTitle><p className="mt-1 break-all text-xs text-muted-foreground">{activeJob.seedUrl} · {activeJob.jobId}</p></div><Badge variant={activeJob.status === 'completed' ? 'default' : 'secondary'}>{activeJob.status}</Badge></CardHeader><CardContent className="px-5 pb-5 sm:px-6"><div className="mb-2 flex items-center justify-between text-xs"><span>Páginas analisadas {activeJob.progress?.pages.analyzed ?? 0} / {activeJob.progress?.pages.discovered ?? 0}</span><span>{activeJob.progress?.percentage ?? 0}%</span></div><div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.min(100, Math.max(0, activeJob.progress?.percentage ?? 0))}%` }} /></div><div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground"><span>Assets: {activeJob.progress?.assets.downloaded ?? 0} descarregados</span><span>·</span><span>Estados interativos: {activeJob.progress?.interactions.states ?? 0}</span></div><div className="mt-4 flex flex-wrap gap-2">{['queued', 'running'].includes(activeJob.status) && <Button type="button" variant="outline" size="sm" onClick={cancelActiveJob}>Cancelar</Button>}{['paused', 'cancelled'].includes(activeJob.status) && <Button type="button" variant="outline" size="sm" onClick={resumeActiveJob}>Retomar</Button>}<Link href={`/crawls/${activeJob.jobId}`}><Button type="button" variant="outline" size="sm">Abrir detalhes</Button></Link></div>{demoNotice && <p className="mt-3 text-xs text-primary" role="status">{demoNotice}</p>}</CardContent></Card>}{jobError && <p className="mb-7 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive" role="alert">{jobError}</p>}
           <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-2 text-sm font-medium text-primary">Workspace pessoal</p><h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Bom dia, Lara.</h2><p className="mt-1 text-sm text-muted-foreground">Aqui está o resumo das tuas análises autorizadas.</p></div><Button className="w-full gap-2 sm:w-auto" onClick={() => { setNewAnalysisOpen(true); setDemoNotice('') }}><Plus className="size-4" /> Nova análise</Button></div>
 
           <div className="mb-7 rounded-xl border border-primary/20 bg-primary/[0.06] px-4 py-3 sm:flex sm:items-center sm:justify-between"><div className="flex items-start gap-3"><div className="mt-0.5 rounded-full bg-primary/10 p-1.5 text-primary"><ShieldCheck className="size-4" /></div><div><p className="text-sm font-medium">Modo de demonstração visual</p><p className="mt-0.5 text-xs text-muted-foreground">A API ainda não está ligada. Os valores abaixo são dados de demonstração e não representam análises reais.</p></div></div><button className="mt-3 pl-11 text-xs font-medium text-primary hover:underline sm:mt-0 sm:pl-0">Configurar integração <ArrowUpRight className="ml-1 inline size-3" /></button></div>
@@ -156,7 +226,7 @@ export default function Page() {
 
           <section className="mt-7 grid gap-5 xl:grid-cols-[1.45fr_1fr]">
             <Card className="overflow-hidden"><CardHeader className="flex flex-row items-center justify-between border-b border-border/70 px-5 py-4 sm:px-6"><div><CardTitle className="text-sm font-semibold">Atividade de análises</CardTitle><p className="mt-1 text-xs text-muted-foreground">Volume de páginas processadas</p></div><Button variant="outline" size="sm" className="hidden sm:flex">Últimos 30 dias <ChevronDown className="ml-2 size-3.5" /></Button></CardHeader><CardContent className="px-5 py-6 sm:px-6"><div className="flex items-end justify-between"><div><p className="text-3xl font-semibold tracking-tight">1.284</p><p className="mt-1 text-xs text-muted-foreground"><span className="font-medium text-primary">+12,5%</span> em relação ao período anterior</p></div><div className="rounded-lg bg-primary/10 p-2 text-primary"><BarChart3 className="size-4" /></div></div><div className="mt-7 flex h-36 items-end gap-1.5 sm:gap-2">{bars.map((height, index) => <div key={index} className="group relative flex h-full flex-1 items-end"><div className={`w-full rounded-t-sm transition-colors ${index === bars.length - 2 ? 'bg-primary' : 'bg-primary/20 group-hover:bg-primary/50'}`} style={{ height: `${height}%` }} /></div>)}</div><div className="mt-3 flex justify-between text-[10px] text-muted-foreground"><span>18 Set</span><span>25 Set</span><span>02 Out</span><span>09 Out</span><span>16 Out</span></div></CardContent></Card>
-            <Card><CardHeader className="flex flex-row items-center justify-between px-5 py-4 sm:px-6"><div><CardTitle className="text-sm font-semibold">Estado do workspace</CardTitle><p className="mt-1 text-xs text-muted-foreground">Saúde operacional das tuas análises</p></div><MoreHorizontal className="size-4 text-muted-foreground" /></CardHeader><CardContent className="px-5 pb-5 sm:px-6"><div className="flex items-center gap-4 rounded-lg border border-border bg-muted/30 p-4"><div className="relative flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary"><Activity className="size-5" /><span className="absolute right-0 top-0 size-2.5 rounded-full border-2 border-card bg-primary" /></div><div><p className="text-sm font-medium">Todos os sistemas operacionais</p><p className="mt-1 text-xs text-muted-foreground">Última verificação há 2 min</p></div></div><div className="mt-5 flex flex-col gap-4"><StatusRow label="Crawler API" value="Operacional" /><StatusRow label="Captura de páginas" value="Operacional" /><StatusRow label="Armazenamento" value="Não configurado" muted /></div><Separator className="my-5" /><div className="flex items-center gap-2 text-xs text-muted-foreground"><Clock3 className="size-3.5" /> Tempo de resposta médio <span className="ml-auto font-medium text-foreground">—</span></div></CardContent></Card>
+            <Card><CardHeader className="flex flex-row items-center justify-between px-5 py-4 sm:px-6"><div><CardTitle className="text-sm font-semibold">Estado do workspace</CardTitle><p className="mt-1 text-xs text-muted-foreground">Saúde operacional das tuas análises</p></div><MoreHorizontal className="size-4 text-muted-foreground" /></CardHeader><CardContent className="px-5 pb-5 sm:px-6"><div className="flex items-center gap-4 rounded-lg border border-border bg-muted/30 p-4"><div className="relative flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary"><Activity className="size-5" /><span className="absolute right-0 top-0 size-2.5 rounded-full border-2 border-card bg-primary" /></div><div><p className="text-sm font-medium">{apiHealth === 'online' ? 'API responde ao health check' : apiHealth === 'checking' ? 'A verificar a API…' : apiHealth === 'offline' ? 'API indisponível' : 'API não configurada'}</p><p className="mt-1 text-xs text-muted-foreground">O endpoint /health confirma apenas a disponibilidade HTTP da API.</p></div></div><div className="mt-5 flex flex-col gap-4"><StatusRow label="Crawler API" value={apiHealth === 'online' ? 'Disponível' : apiHealth === 'checking' ? 'A verificar' : apiHealth === 'offline' ? 'Indisponível' : 'Não configurada'} /><StatusRow label="Captura de páginas" value={apiHealth === 'online' ? 'Disponível na API' : 'Por validar'} /><StatusRow label="Armazenamento" value="Validar no primeiro crawl" muted /></div><Separator className="my-5" /><div className="flex items-center gap-2 text-xs text-muted-foreground"><Clock3 className="size-3.5" /> Tempo de resposta médio <span className="ml-auto font-medium text-foreground">—</span></div></CardContent></Card>
           </section>
 
           <section className="mt-7"><div className="mb-4 flex items-center justify-between"><div><h3 className="text-sm font-semibold">Análises recentes</h3><p className="mt-1 text-xs text-muted-foreground">Acompanha as últimas análises do teu workspace</p></div><button className="text-xs font-medium text-primary hover:underline">Ver todas <ArrowUpRight className="ml-1 inline size-3" /></button></div><Card><CardContent className="p-0"><div className="hidden grid-cols-[1.5fr_1fr_0.7fr_0.8fr_auto] gap-4 border-b border-border px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground sm:grid sm:px-6"><span>Análise</span><span>Estado</span><span>Páginas</span><span>Data</span><span /></div>{recentAnalyses.map((analysis) => <div key={analysis.name} className="grid gap-3 border-b border-border px-5 py-4 last:border-0 sm:grid-cols-[1.5fr_1fr_0.7fr_0.8fr_auto] sm:items-center sm:gap-4 sm:px-6"><div className="flex items-center gap-3"><div className="flex size-9 items-center justify-center rounded-lg bg-muted text-muted-foreground"><Globe2 className="size-4" /></div><div><p className="text-sm font-medium">{analysis.name}</p><p className="mt-0.5 text-xs text-muted-foreground">{analysis.url}</p></div></div><div><Badge variant={analysis.tone === 'success' ? 'default' : 'secondary'} className="gap-1.5 text-[10px]">{analysis.tone === 'success' && <span className="size-1.5 rounded-full bg-primary-foreground" />}{analysis.tone === 'warning' && <span className="size-1.5 rounded-full bg-foreground/50" />}{analysis.status}</Badge></div><p className="text-xs text-muted-foreground">{analysis.pages}</p><p className="text-xs text-muted-foreground">{analysis.date}</p><Button variant="ghost" size="icon" aria-label={`Abrir ${analysis.name}`}><ArrowUpRight className="size-4" /></Button></div>)}</CardContent></Card></section>

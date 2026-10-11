@@ -46,23 +46,23 @@ export function getSafeDiagnosticMessage(diagnostic: IntegrationDiagnostic) {
 
 export function getIntegrationConfig() {
   return {
-    supabaseConfigured: Boolean(process.env.VITE_SUPABASE_URL && process.env.VITE_SUPABASE_PUBLISHABLE_KEY),
-    apiConfigured: Boolean(process.env.VITE_API_BASE_URL),
+    supabaseConfigured: Boolean((process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.VITE_SUPABASE_URL) && (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.VITE_SUPABASE_PUBLISHABLE_KEY)),
+    apiConfigured: Boolean(process.env.NEXT_PUBLIC_API_BASE_URL ?? process.env.VITE_API_BASE_URL),
   }
 }
 
 export const requiredEnvironmentVariables = [
-  'VITE_SUPABASE_URL',
-  'VITE_SUPABASE_PUBLISHABLE_KEY',
-  'VITE_API_BASE_URL',
+  'NEXT_PUBLIC_SUPABASE_URL',
+  'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
+  'NEXT_PUBLIC_API_BASE_URL',
 ] as const
 
 export type RequiredEnvironmentVariable = (typeof requiredEnvironmentVariables)[number]
 
 export function getMissingEnvironmentVariables(config = getIntegrationConfig()) {
   const missing: RequiredEnvironmentVariable[] = []
-  if (!config.supabaseConfigured) missing.push('VITE_SUPABASE_URL', 'VITE_SUPABASE_PUBLISHABLE_KEY')
-  if (!config.apiConfigured) missing.push('VITE_API_BASE_URL')
+  if (!config.supabaseConfigured) missing.push('NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY')
+  if (!config.apiConfigured) missing.push('NEXT_PUBLIC_API_BASE_URL')
   return missing
 }
 
