@@ -202,7 +202,7 @@ export default function EditorPage() {
       const value = attrs[key]
       if (typeof value === 'string' && value.length <= 500) safeAttributes[key === 'colspan' ? 'colSpan' : key === 'rowspan' ? 'rowSpan' : key] = value
     }
-    return createElement(tag, { ...safeAttributes, key: node.uid, onClick, className, style }, node.text ?? null, ...children)
+    return createElement(tag, { ...safeAttributes, key: node.uid, onClick, className, style }, text, ...children)
   }
 
   if (status === 'loading') return <main className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">A carregar o editor…</main>
