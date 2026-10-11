@@ -27,7 +27,8 @@ import {
   X,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { apiClient, ApiError } from '@/lib/api'
 import type { FormEvent } from 'react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -62,16 +63,46 @@ export default function Page() {
   const [analysisUrl, setAnalysisUrl] = useState('')
   const [demoNotice, setDemoNotice] = useState('')
   const [actionNotice, setActionNotice] = useState('')
+  const [apiState, setApiState] = useState<'checking' | 'connected' | 'offline'>('checking')
+  const [isStartingAnalysis, setIsStartingAnalysis] = useState(false)
+
+  useEffect(() => {
+    if (!apiClient.configured) {
+      setApiState('offline')
+      return
+    }
+    apiClient.checkHealth().then((health) => setApiState(health.ok ? 'connected' : 'offline')).catch(() => setApiState('offline'))
+  }, [])
   const router = useRouter()
 
   function handleAction(message: string) {
     setActionNotice(message)
   }
 
-  function handleStartAnalysis(event: FormEvent<HTMLFormElement>) {
+  async function handleStartAnalysis(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!analysisUrl.trim()) return
-    setDemoNotice('Pedido preparado. A API será chamada quando VITE_API_BASE_URL estiver configurada.')
+    setDemoNotice('')
+    let url: URL
+    try {
+      url = new URL(analysisUrl.trim())
+      if (!['http:', 'https:'].includes(url.protocol)) throw new Error('invalid')
+    } catch {
+      setDemoNotice('Introduz um URL válido, começando por http:// ou https://.')
+      return
+    }
+    if (!apiClient.configured) {
+      setDemoNotice('A API não está configurada. Nenhum pedido foi enviado.')
+      return
+    }
+    setIsStartingAnalysis(true)
+    try {
+      const created = await apiClient.createCrawlJob(url.toString())
+      router.push(`/crawls/${created.jobId}`)
+    } catch (error) {
+      setDemoNotice(error instanceof ApiError ? error.message : 'Não foi possível iniciar o rastreamento.')
+    } finally {
+      setIsStartingAnalysis(false)
+    }
   }
 
   return (
@@ -150,7 +181,7 @@ export default function Page() {
 
         <main className="mx-auto max-w-[1500px] px-5 py-7 sm:px-8 sm:py-9">
           {actionNotice && <div className="mb-5 flex items-center justify-between rounded-lg border border-primary/25 bg-primary/[0.06] px-4 py-3 text-xs text-primary" role="status"><span>{actionNotice}</span><button onClick={() => setActionNotice('')} className="ml-4 font-medium hover:underline" aria-label="Fechar aviso">Fechar</button></div>}
-          {newAnalysisOpen && <Card className="mb-7 border-primary/30 bg-primary/[0.04]"><CardHeader className="flex flex-row items-start justify-between gap-4 px-5 py-4 sm:px-6"><div><CardTitle className="text-sm font-semibold">Iniciar nova análise</CardTitle><p className="mt-1 text-xs text-muted-foreground">Introduz um URL autorizado para preparar o rastreamento.</p></div><Button variant="ghost" size="icon" onClick={() => setNewAnalysisOpen(false)} aria-label="Fechar nova análise"><X /></Button></CardHeader><CardContent className="px-5 pb-5 sm:px-6"><form className="flex flex-col gap-3 sm:flex-row" onSubmit={(event: FormEvent<HTMLFormElement>) => handleStartAnalysis(event)}><input aria-label="URL do site" value={analysisUrl} onChange={(event) => setAnalysisUrl(event.target.value)} placeholder="https://exemplo.pt" className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-sm outline-none ring-primary/30 placeholder:text-muted-foreground focus:ring-2" /><Button type="submit" className="gap-2"><Globe2 className="size-4" /> Preparar análise</Button></form>{demoNotice && <p className="mt-3 text-xs text-primary" role="status">{demoNotice}</p>}<p className="mt-3 text-[11px] text-muted-foreground">Demonstração visual: nenhum pedido foi enviado porque a API ainda não está configurada.</p></CardContent></Card>}
+          {newAnalysisOpen && <Card className="mb-7 border-primary/30 bg-primary/[0.04]"><CardHeader className="flex flex-row items-start justify-between gap-4 px-5 py-4 sm:px-6"><div><CardTitle className="text-sm font-semibold">Iniciar nova análise</CardTitle><p className="mt-1 text-xs text-muted-foreground">Introduz um URL autorizado para preparar o rastreamento.</p></div><Button variant="ghost" size="icon" onClick={() => setNewAnalysisOpen(false)} aria-label="Fechar nova análise"><X /></Button></CardHeader><CardContent className="px-5 pb-5 sm:px-6"><form className="flex flex-col gap-3 sm:flex-row" onSubmit={(event: FormEvent<HTMLFormElement>) => handleStartAnalysis(event)}><input aria-label="URL do site" value={analysisUrl} onChange={(event) => setAnalysisUrl(event.target.value)} placeholder="https://exemplo.pt" className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-sm outline-none ring-primary/30 placeholder:text-muted-foreground focus:ring-2" /><Button type="submit" className="gap-2" disabled={isStartingAnalysis}>{isStartingAnalysis ? 'A iniciar…' : <><Globe2 className="size-4" /> Iniciar análise</>}</Button></form>{demoNotice && <p className="mt-3 text-xs text-primary" role="status">{demoNotice}</p>}<p className="mt-3 text-[11px] text-muted-foreground">Demonstração visual: nenhum pedido foi enviado porque a API ainda não está configurada.</p></CardContent></Card>}
           <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-2 text-sm font-medium text-primary">Workspace pessoal</p><h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Bom dia, Lara.</h2><p className="mt-1 text-sm text-muted-foreground">Aqui está o resumo das tuas análises autorizadas.</p></div><Button className="w-full gap-2 sm:w-auto" onClick={() => { setNewAnalysisOpen(true); setDemoNotice('') }}><Plus className="size-4" /> Nova análise</Button></div>
 
           <div className="mb-7 rounded-xl border border-primary/20 bg-primary/[0.06] px-4 py-3 sm:flex sm:items-center sm:justify-between"><div className="flex items-start gap-3"><div className="mt-0.5 rounded-full bg-primary/10 p-1.5 text-primary"><ShieldCheck className="size-4" /></div><div><p className="text-sm font-medium">Modo de demonstração visual</p><p className="mt-0.5 text-xs text-muted-foreground">A API ainda não está ligada. Os valores abaixo são dados de demonstração e não representam análises reais.</p></div></div><button onClick={() => handleAction('Configuração necessária: VITE_API_BASE_URL e credenciais Supabase.')} className="mt-3 pl-11 text-xs font-medium text-primary hover:underline sm:mt-0 sm:pl-0">Configurar integração <ArrowUpRight className="ml-1 inline size-3" /></button></div>
@@ -169,7 +200,7 @@ export default function Page() {
 
           <section className="mt-7"><div className="mb-4 flex items-center justify-between"><div><h3 className="text-sm font-semibold">Análises recentes</h3><p className="mt-1 text-xs text-muted-foreground">Acompanha as últimas análises do teu workspace</p></div><button onClick={() => router.push('/crawls/demo-job')} className="text-xs font-medium text-primary hover:underline">Ver todas <ArrowUpRight className="ml-1 inline size-3" /></button></div><Card><CardContent className="p-0"><div className="hidden grid-cols-[1.5fr_1fr_0.7fr_0.8fr_auto] gap-4 border-b border-border px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground sm:grid sm:px-6"><span>Análise</span><span>Estado</span><span>Páginas</span><span>Data</span><span /></div>{recentAnalyses.map((analysis) => <div key={analysis.name} className="grid gap-3 border-b border-border px-5 py-4 last:border-0 sm:grid-cols-[1.5fr_1fr_0.7fr_0.8fr_auto] sm:items-center sm:gap-4 sm:px-6"><div className="flex items-center gap-3"><div className="flex size-9 items-center justify-center rounded-lg bg-muted text-muted-foreground"><Globe2 className="size-4" /></div><div><p className="text-sm font-medium">{analysis.name}</p><p className="mt-0.5 text-xs text-muted-foreground">{analysis.url}</p></div></div><div><Badge variant={analysis.tone === 'success' ? 'default' : 'secondary'} className="gap-1.5 text-[10px]">{analysis.tone === 'success' && <span className="size-1.5 rounded-full bg-primary-foreground" />}{analysis.tone === 'warning' && <span className="size-1.5 rounded-full bg-foreground/50" />}{analysis.status}</Badge></div><p className="text-xs text-muted-foreground">{analysis.pages}</p><p className="text-xs text-muted-foreground">{analysis.date}</p><Button variant="ghost" size="icon" aria-label={`Abrir ${analysis.name}`} onClick={() => analysis.tone === 'success' ? router.push('/results/demo-job') : handleAction(`${analysis.name}: acompanhamento disponível quando a API estiver ligada.`)}><ArrowUpRight className="size-4" /></Button></div>)}</CardContent></Card></section>
 
-          <footer className="mt-10 flex flex-col gap-2 border-t border-border pt-5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between"><p>Offer Cloner Pro · Frontend em construção</p><div className="flex items-center gap-4"><span className="flex items-center gap-1.5"><Code2 className="size-3.5" /> API não ligada</span><span>v0.1.0</span></div></footer>
+          <footer className="mt-10 flex flex-col gap-2 border-t border-border pt-5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between"><p>Offer Cloner Pro · Frontend em construção</p><div className="flex items-center gap-4"><span className="flex items-center gap-1.5"><Code2 className="size-3.5" /> {apiState === 'checking' ? 'A verificar API' : apiState === 'connected' ? 'API ligada' : 'API não ligada'}</span><span>v0.1.0</span></div></footer>
         </main>
       </div>
     </div>

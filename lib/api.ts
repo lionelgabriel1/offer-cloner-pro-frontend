@@ -3,6 +3,8 @@ export type CrawlPageStatus = 'pending' | 'in_progress' | 'analyzed' | 'ignored'
 
 export type Progress = { percentage: number; pages: { discovered: number; analyzed: number; pending: number; ignored: number; failed: number }; interactions: { states: number; branches: number; pending: number }; assets: { found: number; downloaded: number; failed: number }; limitsApplied: string[] }
 export type CrawlJobStatus = { jobId: string; siteId: string; seedUrl: string; status: CrawlStatus; progress: Progress | null; options: Record<string, unknown>; createdAt: string; updatedAt: string; finishedAt?: string }
+export type HealthResponse = { ok: true }
+export type CreateCrawlJobResponse = { jobId: string; siteId: string; status: 'queued'; progress: Progress; links: { self: string; pages: string; report: string; siteModel: string } }
 export type SitePage = { pageKey: string; requestedUrl: string; canonicalUrl: string; finalUrl?: string; depth: number; status: CrawlPageStatus; discoveredFrom?: string; httpStatus?: number; redirects: string[]; pageModelPath?: string; title?: string; screenshotPaths: string[]; stateIds: string[]; linksFound: number; assetsFound: number; assetsDownloaded: number; assetsFailed: number; error?: string; limitations: string[] }
 export type CrawlPageListResponse = { jobId: string; status: CrawlStatus; progress: Progress | null; pagination: { offset: number; limit: number; total: number; hasMore: boolean }; pages: SitePage[] }
 export type CrawlReport = { jobId: string; status: CrawlStatus; progress: Progress | null; links: unknown[]; interactions: unknown[]; limitations: string[]; errors: string[]; generatedAt: string }
@@ -45,6 +47,8 @@ export function createApiClient(baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?
   }
   return {
     configured,
+    checkHealth: () => request<HealthResponse>('/health'),
+    createCrawlJob: (url: string, token?: string) => request<CreateCrawlJobResponse>('/api/crawl-jobs', token, { method: 'POST', body: JSON.stringify({ url }) }),
     getCrawlJob: (id: string, token?: string) => request<CrawlJobStatus>(`/api/crawl-jobs/${encodeURIComponent(id)}`, token),
     listPages: (id: string, params: { offset?: number; limit?: number; status?: CrawlPageStatus } = {}, token?: string) => { const query = new URLSearchParams(); if (params.offset !== undefined) query.set('offset', String(params.offset)); if (params.limit !== undefined) query.set('limit', String(params.limit)); if (params.status) query.set('status', params.status); return request<CrawlPageListResponse>(`/api/crawl-jobs/${encodeURIComponent(id)}/pages?${query}`, token) },
     getSiteModel: (id: string, token?: string) => request<Record<string, unknown>>(`/api/crawl-jobs/${encodeURIComponent(id)}/site-model`, token),
