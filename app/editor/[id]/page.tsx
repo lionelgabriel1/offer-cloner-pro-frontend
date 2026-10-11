@@ -85,8 +85,18 @@ export default function EditorPage() {
   }, [root, selectedId])
   const dirty = JSON.stringify(model) !== JSON.stringify(savedModel)
 
+  useEffect(() => {
+    if (!dirty) return
+    const warnBeforeLeave = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warnBeforeLeave)
+    return () => window.removeEventListener('beforeunload', warnBeforeLeave)
+  }, [dirty])
+
   const updateSelectedNode = (mutate: (node: VisualNode) => void) => {
-    if (!model || !selectedNode) return
+    if (!model || !selectedNode || status === 'saving') return
     setUndoStack((items) => [...items.slice(-19), model])
     setFuture([])
     const next = structuredClone(model) as PageModel
@@ -121,8 +131,8 @@ export default function EditorPage() {
     setStatus('saving'); setError('')
     try { const response = await apiClient.updateProjectEditor(id, model); setModel(response.model); setSavedModel(response.model); setStatus('saved') } catch (cause: unknown) { setError(cause instanceof Error ? cause.message : 'Não foi possível guardar as alterações.'); setStatus('error') }
   }
-  const undo = () => { const previous = undoStack.at(-1); if (!previous || !model) return; setFuture((items) => [model, ...items]); setUndoStack((items) => items.slice(0, -1)); setModel(previous) }
-  const redo = () => { const next = future[0]; if (!next || !model) return; setUndoStack((items) => [...items, model]); setFuture((items) => items.slice(1)); setModel(next) }
+  const undo = () => { const previous = undoStack.at(-1); if (!previous || !model || status === 'saving') return; setFuture((items) => [model, ...items]); setUndoStack((items) => items.slice(0, -1)); setModel(previous) }
+  const redo = () => { const next = future[0]; if (!next || !model || status === 'saving') return; setUndoStack((items) => [...items, model]); setFuture((items) => items.slice(1)); setModel(next) }
 
   const renderTree = (node: VisualNode, depth = 0): ReactNode => {
     const children = childrenOf(node)
@@ -196,7 +206,7 @@ export default function EditorPage() {
       <Button variant="ghost" size="icon" aria-label="Voltar" onClick={() => window.history.back()}><ArrowLeft /></Button>
       <div className="min-w-0"><p className="text-[11px] text-muted-foreground">Editor visual</p><h1 className="truncate text-sm font-semibold">{model?.title || 'Página reconstruída'}</h1></div>
       <Badge variant="outline" className="hidden sm:inline-flex">{status === 'saved' || !dirty ? 'Guardado' : 'Alterações por guardar'}</Badge>
-      <div className="ml-auto flex items-center gap-1"><Button variant="ghost" size="icon" aria-label="Desfazer" onClick={undo} disabled={!undoStack.length}><Undo2 /></Button><Button variant="ghost" size="icon" aria-label="Refazer" onClick={redo} disabled={!future.length}><Redo2 /></Button><Button variant="outline" size="sm" onClick={() => setPreviewOnly((value) => !value)}><Eye data-icon="inline-start" /> {previewOnly ? "Voltar ao editor" : "Pré-visualizar"}</Button><Button size="sm" onClick={save} disabled={!dirty || status === 'saving'}><Save data-icon="inline-start" /> {status === 'saving' ? 'A guardar…' : 'Guardar'}</Button></div>
+      <div className="ml-auto flex items-center gap-1"><Button variant="ghost" size="icon" aria-label="Desfazer" onClick={undo} disabled={!undoStack.length || status === 'saving'}><Undo2 /></Button><Button variant="ghost" size="icon" aria-label="Refazer" onClick={redo} disabled={!future.length || status === 'saving'}><Redo2 /></Button><Button variant="outline" size="sm" onClick={() => setPreviewOnly((value) => !value)}><Eye data-icon="inline-start" /> {previewOnly ? "Voltar ao editor" : "Pré-visualizar"}</Button><Button size="sm" onClick={save} disabled={!dirty || status === 'saving'}><Save data-icon="inline-start" /> {status === 'saving' ? 'A guardar…' : 'Guardar'}</Button></div>
     </header>
     <div className="border-b border-border bg-background px-4 py-2 text-center text-xs text-muted-foreground">Estás a editar o modelo real devolvido pela API. As alterações são guardadas no backend.</div>
     <div className={previewOnly ? "grid min-h-[calc(100vh-104px)] grid-cols-1" : "grid min-h-[calc(100vh-104px)] lg:grid-cols-[240px_minmax(0,1fr)_300px]"}>
