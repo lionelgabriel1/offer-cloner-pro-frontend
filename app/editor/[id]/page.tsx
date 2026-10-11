@@ -1,6 +1,7 @@
 'use client'
 
 import { createElement, useEffect, useMemo, useState } from 'react'
+import { useParams } from 'next/navigation'
 import type { CSSProperties, MouseEvent, ReactNode } from 'react'
 import { AlertCircle, ArrowLeft, ChevronRight, Eye, Monitor, Save, Search, Smartphone, Tablet, Undo2, Redo2, Layers3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
