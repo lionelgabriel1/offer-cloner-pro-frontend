@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, createApiClient } from '../lib/api'
+import { ApiError, createApiClient, isValidHttpUrl } from '../lib/api'
 import {
   diagnoseIntegration,
   getIntegrationConfig,
@@ -10,6 +10,26 @@ import {
 afterEach(() => vi.restoreAllMocks())
 
 describe('cliente API protegido', () => {
+  it.each([
+    ['https://example.com', true],
+    ['http://localhost:3000/path', true],
+    ['ftp://example.com', false],
+    ['example.com', false],
+    ['not a url', false],
+  ])('valida URL %s', (value, expected) => {
+    expect(isValidHttpUrl(value)).toBe(expected)
+  })
+
+  it('usa a resposta real de /health', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    await expect(createApiClient('https://api.test').checkHealth()).resolves.toEqual({ ok: true })
+  })
+
+  it('trata erro ao iniciar um rastreamento', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('backend error', { status: 503 }))
+    await expect(createApiClient('https://api.test').createCrawlJob('https://example.com')).rejects.toEqual(expect.objectContaining({ status: 503, message: 'Serviço temporariamente indisponível.' }))
+  })
+
   it('envia o Bearer token e o corpo PUT', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
     const client = createApiClient('https://api.test')

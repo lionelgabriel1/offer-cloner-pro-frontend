@@ -21,6 +21,15 @@ export class ApiError extends Error {
   }
 }
 
+export function isValidHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value.trim())
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 export type ApiClient = ReturnType<typeof createApiClient>
 
 export function createApiClient(baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? process.env.VITE_API_BASE_URL) {
