@@ -41,7 +41,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
 
   const root = useMemo(() => {
     const viewportRoot = model?.viewports.find((item) => item.kind === viewport)?.dom as VisualNode | undefined
-    return viewportRoot ?? model?.demoTree as VisualNode | undefined
+    return viewportRoot
   }, [model, viewport])
   const selectedNode = useMemo(() => {
     if (!root) return null
@@ -54,7 +54,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     if (!model || !selectedNode) return
     setUndoStack((items) => [...items.slice(-19), model]); setFuture([])
     const next = structuredClone(model) as PageModel
-    const target = (next.viewports.find((item) => item.kind === viewport)?.dom ?? next.demoTree) as VisualNode | undefined
+    const target = next.viewports.find((item) => item.kind === viewport)?.dom as VisualNode | undefined
     const update = (node: VisualNode): boolean => { if (node.uid === selectedNode.uid) { node.text = value; return true }; return childrenOf(node).some(update) }
     if (target) update(target)
     setModel(next)
