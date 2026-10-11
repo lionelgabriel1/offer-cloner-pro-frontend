@@ -1,42 +1,175 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, ArrowLeft, ChevronDown, ChevronRight, Code2, ExternalLink, FileEdit, Layers3, Save, Search, Smartphone, Tablet, Undo2 } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { createElement, useEffect, useMemo, useState } from 'react'
+import type { CSSProperties, MouseEvent, ReactNode } from 'react'
+import { AlertCircle, ArrowLeft, ChevronRight, Eye, Monitor, Save, Search, Smartphone, Tablet, Undo2, Redo2, Layers3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { apiClient, isApiConfigured, type EditorDomNode, type PageModel } from '@/lib/api'
 
-type DemoNode = EditorDomNode & { children: DemoNode[] }
-const demoModel: PageModel = { schemaVersion: '1.0', projectId: 'demo-project', sourceUrl: 'https://demo.example.com', capturedAt: '2026-10-10T10:00:00Z', title: 'Página inicial', viewports: [], assets: [], metadata: { userAgent: 'Offer Cloner Pro demo', durationMs: 0, warnings: [] }, demoTree: { uid: 'root', tag: 'main', text: '', children: [{ uid: 'hero', tag: 'section', text: '', children: [{ uid: 'heading', tag: 'h1', text: 'A forma mais simples de lançar o teu produto', children: [] }, { uid: 'cta', tag: 'button', text: 'Começar agora', children: [] }] }, { uid: 'features', tag: 'section', text: '', children: [{ uid: 'feature-title', tag: 'h2', text: 'Tudo num só lugar', children: [] }] }] } }
+type VisualNode = EditorDomNode & { children?: VisualNode[] }
+type Viewport = 'desktop' | 'tablet' | 'mobile'
 
-function nodeChildren(node: EditorDomNode) { return Array.isArray(node.children) ? node.children as DemoNode[] : [] }
-function nodeLabel(node: EditorDomNode) { return node.text?.trim() || node.id || node.tag }
+const labelForNode = (node: VisualNode) => {
+  const tag = node.tag.toLowerCase()
+  const tagLabels: Record<string, string> = {
+    html: 'Documento', body: 'Página', main: 'Conteúdo principal', section: 'Secção',
+    header: 'Cabeçalho', footer: 'Rodapé', nav: 'Navegação', article: 'Artigo',
+    aside: 'Conteúdo lateral', div: 'Grupo de conteúdo', h1: 'Título principal',
+    h2: 'Título', h3: 'Subtítulo', h4: 'Título secundário', h5: 'Título pequeno',
+    h6: 'Título pequeno', p: 'Texto', span: 'Texto em linha', img: 'Imagem',
+    picture: 'Imagem responsiva', video: 'Vídeo', iframe: 'Conteúdo incorporado',
+    button: 'Botão', a: 'Ligação', form: 'Formulário', input: 'Campo de entrada',
+    textarea: 'Campo de texto', select: 'Lista de opções', option: 'Opção',
+    label: 'Rótulo', fieldset: 'Grupo de campos', legend: 'Título do formulário',
+    ul: 'Lista', ol: 'Lista numerada', li: 'Item da lista', blockquote: 'Citação',
+    strong: 'Texto em destaque', em: 'Texto enfatizado', small: 'Texto pequeno',
+    details: 'Secção expansível', summary: 'Título expansível', table: 'Tabela',
+    tr: 'Linha da tabela', td: 'Célula', th: 'Cabeçalho da tabela'
+  }
+  const text = node.text?.replace(/\s+/g, ' ').trim()
+  const hints = [node.id ?? '', ...(node.classes ?? []), ...Object.values(node.attributes ?? {}).filter((value) => typeof value === 'string').slice(0, 12)].join(' ').toLowerCase()
+  const semanticLabels: Array<[RegExp, string]> = [
+    [/testimonial|depoimento|review|feedback/, 'Depoimento'],
+    [/\bfaq\b|frequently-asked|perguntas-frequentes/, 'Perguntas frequentes'],
+    [/quiz|question|pergunta/, 'Pergunta do quiz'],
+    [/answer|resposta|option/, 'Opção de resposta'],
+    [/pricing|price|preco|preço|plan-card/, 'Preço ou plano'],
+    [/countdown|timer|contagem/, 'Contador'],
+    [/progress|progresso/, 'Barra de progresso'],
+    [/hero|banner/, 'Secção principal'],
+    [/cta|call-to-action/, 'Chamada para acção']
+  ]
+  const semantic = semanticLabels.find(([pattern]) => pattern.test(hints))?.[1]
+  const label = semantic ?? tagLabels[tag] ?? 'Elemento personalizado'
+  return text ? `${label} — ${text.slice(0, 46)}${text.length > 46 ? '…' : ''}` : label
+}
+
+const childrenOf = (node: VisualNode) => Array.isArray(node.children) ? node.children : []
 
 export default function EditorPage({ params }: { params: { id: string } }) {
   const [model, setModel] = useState<PageModel | null>(null)
   const [savedModel, setSavedModel] = useState<PageModel | null>(null)
-  const [selected, setSelected] = useState<string>('root')
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({ root: true, hero: true, features: true })
+  const [selectedId, setSelectedId] = useState('')
+  const [viewport, setViewport] = useState<Viewport>('desktop')
+  const [previewOnly, setPreviewOnly] = useState(false)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<'loading' | 'ready' | 'saving' | 'saved' | 'error'>('loading')
   const [error, setError] = useState('')
-  const [viewport, setViewport] = useState<'desktop' | 'tablet' | 'mobile'>('desktop')
+  const [undoStack, setUndoStack] = useState<PageModel[]>([])
+  const [future, setFuture] = useState<PageModel[]>([])
 
-  useEffect(() => { let active = true; async function load() { if (!isApiConfigured) { setModel(demoModel); setSavedModel(demoModel); setStatus('ready'); return } try { const response = await apiClient.getProjectEditor(params.id); if (active) { setModel(response.model); setSavedModel(response.model); setStatus('ready') } } catch (cause) { if (active) { setError(cause instanceof Error ? cause.message : 'Não foi possível carregar o Page Model.'); setStatus('error') } } } load(); return () => { active = false } }, [params.id])
+  useEffect(() => {
+    let active = true
+    if (!isApiConfigured) { setError('A API não está configurada. Não é possível abrir um modelo real.'); setStatus('error'); return () => { active = false } }
+    apiClient.getProjectEditor(params.id).then((response) => {
+      if (!active) return
+      setModel(response.model); setSavedModel(response.model); setSelectedId((response.model.viewports.find((item) => item.kind === 'desktop')?.dom as VisualNode | undefined)?.uid ?? ''); setStatus('ready')
+    }).catch((cause: unknown) => { if (active) { setError(cause instanceof Error ? cause.message : 'Não foi possível carregar o modelo.'); setStatus('error') } })
+    return () => { active = false }
+  }, [params.id])
 
-  const root = model?.demoTree as DemoNode | undefined
-  const selectedNode = useMemo(() => { if (!root) return null; const walk = (node: DemoNode): DemoNode | null => node.uid === selected ? node : nodeChildren(node).map(walk).find(Boolean) || null; return walk(root) }, [root, selected])
+  const root = useMemo(() => {
+    const viewportRoot = model?.viewports.find((item) => item.kind === viewport)?.dom as VisualNode | undefined
+    return viewportRoot
+  }, [model, viewport])
+  const selectedNode = useMemo(() => {
+    if (!root) return null
+    const find = (node: VisualNode): VisualNode | null => node.uid === selectedId ? node : childrenOf(node).map(find).find(Boolean) ?? null
+    return find(root)
+  }, [root, selectedId])
   const dirty = JSON.stringify(model) !== JSON.stringify(savedModel)
-  const updateSelected = (key: 'text' | 'tag', value: string) => { if (!model || !root || !selectedNode) return; const next = structuredClone(model); const walk = (node: DemoNode): boolean => { if (node.uid === selected) { node[key] = value; return true } return nodeChildren(node).some(walk) }; walk(next.demoTree as DemoNode); setModel(next) }
-  const save = async () => { if (!model || !dirty) return; setStatus('saving'); setError(''); if (!isApiConfigured) { setTimeout(() => { setSavedModel(model); setStatus('saved') }, 450); return } try { const response = await apiClient.updateProjectEditor(params.id, model); setModel(response.model); setSavedModel(response.model); setStatus('saved') } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível guardar o modelo.'); setStatus('error') } }
 
-  if (status === 'loading') return <main className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">A carregar o Page Model…</main>
-  if (status === 'error' && !model) return <main className="flex min-h-screen items-center justify-center bg-background p-6 text-center"><div><AlertCircle className="mx-auto mb-3 size-6 text-destructive" /><p className="text-sm font-medium">Não foi possível abrir o editor</p><p className="mt-2 text-xs text-muted-foreground">{error}</p></div></main>
+  const updateSelectedNode = (mutate: (node: VisualNode) => void) => {
+    if (!model || !selectedNode) return
+    setUndoStack((items) => [...items.slice(-19), model])
+    setFuture([])
+    const next = structuredClone(model) as PageModel
+    const target = next.viewports.find((item) => item.kind === viewport)?.dom as VisualNode | undefined
+    const update = (node: VisualNode): boolean => {
+      if (node.uid === selectedNode.uid) { mutate(node); return true }
+      return childrenOf(node).some(update)
+    }
+    if (target) update(target)
+    setModel(next)
+    setStatus('ready')
+  }
 
-  const renderTree = (node: DemoNode, depth = 0): React.ReactNode => { const children = nodeChildren(node); const matches = !search || `${node.tag} ${node.text || ''} ${node.id || ''}`.toLowerCase().includes(search.toLowerCase()); if (!matches && !children.some((child) => JSON.stringify(child).toLowerCase().includes(search.toLowerCase()))) return null; const isOpen = expanded[node.uid]; return <div key={node.uid}><button onClick={() => setSelected(node.uid)} className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs transition-colors ${selected === node.uid ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} style={{ paddingLeft: `${8 + depth * 16}px` }}>{children.length ? <span onClick={(event) => { event.stopPropagation(); setExpanded((current) => ({ ...current, [node.uid]: !current[node.uid] })) }}>{isOpen ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}</span> : <span className="size-3" />}<Code2 className="size-3.5 shrink-0" /><span className="truncate">{node.tag}</span><span className="ml-auto truncate text-[10px] opacity-60">{nodeLabel(node)}</span></button>{isOpen && children.map((child) => renderTree(child, depth + 1))}</div> }
+  const updateText = (value: string) => updateSelectedNode((node) => { node.text = value })
+  const updateAttribute = (key: string, value: string) => updateSelectedNode((node) => {
+    node.attributes = { ...(node.attributes ?? {}), [key]: value }
+  })
 
-  return <div className="min-h-screen bg-background text-foreground"><header className="flex h-16 items-center gap-3 border-b border-border px-4 sm:px-7"><Button variant="ghost" size="icon" aria-label="Voltar"><ArrowLeft /></Button><div className="min-w-0"><p className="text-[11px] text-muted-foreground">Editor / {params.id}</p><h1 className="truncate text-sm font-semibold">{model?.title || 'Page Model'}</h1></div><Badge variant="secondary" className="ml-auto">{isApiConfigured ? 'Modelo real' : 'Demonstração'}</Badge><Button size="sm" onClick={save} disabled={!dirty || status === 'saving'}><Save data-icon="inline-start" />{status === 'saving' ? 'A guardar…' : 'Guardar'}</Button></header><div className="border-b border-primary/20 bg-primary/[0.05] px-4 py-2 text-center text-[11px] text-muted-foreground">{isApiConfigured ? 'A editar o Page Model devolvido pela API.' : 'Modo de demonstração: este modelo é fictício e não representa uma página real.'}</div><main className="grid min-h-[calc(100vh-104px)] lg:grid-cols-[250px_minmax(0,1fr)_280px]"><aside className="border-b border-border p-4 lg:border-r lg:border-b-0"><div className="mb-4 flex items-center justify-between"><div><p className="text-xs font-semibold">Estrutura</p><p className="mt-1 text-[11px] text-muted-foreground">Elementos do modelo</p></div><Layers3 className="size-4 text-muted-foreground" /></div><div className="mb-4 flex items-center gap-2 rounded-md border border-border px-2"><Search className="size-3.5 text-muted-foreground" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Pesquisar" className="h-8 min-w-0 flex-1 border-0 bg-transparent px-0 text-xs outline-none placeholder:text-muted-foreground" /></div><div className="max-h-72 overflow-y-auto">{root ? renderTree(root) : <p className="text-xs text-muted-foreground">O modelo não contém uma árvore DOM.</p>}</div></aside><section className="min-w-0 border-b border-border bg-muted/20 p-4 lg:border-r lg:border-b-0"><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold">Pré-visualização estrutural</p><p className="mt-1 text-[11px] text-muted-foreground">Representação do modelo, não uma página original interactiva.</p></div><div className="flex gap-1"><Button variant={viewport === 'desktop' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewport('desktop')} aria-label="Desktop"><ExternalLink /></Button><Button variant={viewport === 'tablet' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewport('tablet')} aria-label="Tablet"><Tablet /></Button><Button variant={viewport === 'mobile' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewport('mobile')} aria-label="Mobile"><Smartphone /></Button></div></div><div className="flex min-h-[430px] justify-center rounded-xl border border-dashed border-border bg-background p-5"><div className={`w-full rounded-lg border border-border bg-card p-6 shadow-sm transition-all ${viewport === 'tablet' ? 'max-w-[680px]' : viewport === 'mobile' ? 'max-w-[380px]' : 'max-w-[920px]'}`}><p className="mb-8 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{model?.sourceUrl}</p><div className="flex flex-col gap-3">{selectedNode ? <><Badge variant="outline" className="w-fit">&lt;{selectedNode.tag}&gt;</Badge><h2 className="text-xl font-semibold">{nodeLabel(selectedNode)}</h2><p className="text-xs text-muted-foreground">Selecciona outro elemento na árvore para consultar a sua representação.</p></> : <p className="text-sm text-muted-foreground">Selecciona um elemento.</p>}</div></div></div></section><aside className="p-4"><div className="mb-4 flex items-center justify-between"><div><p className="text-xs font-semibold">Propriedades</p><p className="mt-1 text-[11px] text-muted-foreground">Campos suportados pelo modelo</p></div><FileEdit className="size-4 text-muted-foreground" /></div>{selectedNode ? <Card><CardHeader className="p-4"><CardTitle className="font-mono text-xs">{selectedNode.tag}</CardTitle></CardHeader><Separator /><CardContent className="flex flex-col gap-4 p-4"><label className="flex flex-col gap-2 text-xs font-medium">Texto<input value={selectedNode.text || ''} onChange={(event) => updateSelected('text', event.target.value)} placeholder="Sem texto" className="h-9 rounded-md border border-border bg-background px-3 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label><label className="flex flex-col gap-2 text-xs font-medium">Tag<input value={selectedNode.tag} onChange={(event) => updateSelected('tag', event.target.value)} className="h-9 rounded-md border border-border bg-background px-3 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label><p className="text-[10px] leading-relaxed text-muted-foreground">Apenas campos presentes no Page Model podem ser editados. Campos desconhecidos são preservados.</p></CardContent></Card> : <p className="text-xs text-muted-foreground">Selecciona um elemento para editar.</p>}{dirty && <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-[11px] text-amber-200"><Undo2 className="mt-0.5 size-3.5 shrink-0" />Alterações pendentes. Guarda o modelo quando terminares.</div>}{status === 'saved' && !dirty && <p className="mt-4 text-[11px] text-emerald-400">Modelo guardado com sucesso.</p>}{error && <p className="mt-4 text-[11px] text-destructive">{error}</p>}</aside></main></div>
+  const save = async () => {
+    if (!model || !dirty) return
+    setStatus('saving'); setError('')
+    try { const response = await apiClient.updateProjectEditor(params.id, model); setModel(response.model); setSavedModel(response.model); setStatus('saved') } catch (cause: unknown) { setError(cause instanceof Error ? cause.message : 'Não foi possível guardar as alterações.'); setStatus('error') }
+  }
+  const undo = () => { const previous = undoStack.at(-1); if (!previous || !model) return; setFuture((items) => [model, ...items]); setUndoStack((items) => items.slice(0, -1)); setModel(previous) }
+  const redo = () => { const next = future[0]; if (!next || !model) return; setUndoStack((items) => [...items, model]); setFuture((items) => items.slice(1)); setModel(next) }
+
+  const renderTree = (node: VisualNode, depth = 0): ReactNode => {
+    const children = childrenOf(node)
+    const matches = !search || `${labelForNode(node)} ${node.text ?? ''}`.toLowerCase().includes(search.toLowerCase())
+    if (!matches && !children.some((child) => JSON.stringify(child).toLowerCase().includes(search.toLowerCase()))) return null
+    return <div key={node.uid}><button onClick={() => setSelectedId(node.uid)} className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs transition-colors ${selectedId === node.uid ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} style={{ paddingLeft: `${8 + depth * 14}px` }}>{children.length ? <ChevronRight className="size-3" /> : <span className="size-3" />}<span className="truncate">{labelForNode(node)}</span></button>{children.map((child) => renderTree(child, depth + 1))}</div>
+  }
+
+  const renderPreview = (node: VisualNode, depth = 0): ReactNode => {
+    const allowed = new Set(['main','div','section','header','footer','nav','article','aside','h1','h2','h3','h4','h5','h6','p','span','strong','em','small','ul','ol','li','a','button','img','video','form','label','input','textarea','blockquote'])
+    const tag = allowed.has(node.tag.toLowerCase()) ? node.tag.toLowerCase() : 'div'
+    const sourceStyles = node.styles ?? {}
+    const styleMap: Record<string, string> = {
+      display: 'display', position: 'position', width: 'width', height: 'height',
+      margin: 'margin', marginTop: 'marginTop', marginBottom: 'marginBottom',
+      padding: 'padding', paddingTop: 'paddingTop', paddingBottom: 'paddingBottom',
+      gap: 'gap', color: 'color', backgroundColor: 'backgroundColor',
+      fontFamily: 'fontFamily', fontSize: 'fontSize', fontWeight: 'fontWeight',
+      lineHeight: 'lineHeight', textAlign: 'textAlign', border: 'border',
+      borderRadius: 'borderRadius', boxShadow: 'boxShadow', opacity: 'opacity',
+      flexDirection: 'flexDirection', alignItems: 'alignItems', justifyContent: 'justifyContent',
+      gridTemplateColumns: 'gridTemplateColumns', overflow: 'overflow'
+    }
+    const style: CSSProperties = {}
+    for (const [sourceKey, targetKey] of Object.entries(styleMap)) {
+      const kebabKey = sourceKey.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
+      const value = sourceStyles[sourceKey] ?? sourceStyles[targetKey] ?? sourceStyles[kebabKey]
+      if (typeof value === 'string' && value.length < 160) (style as Record<string, string>)[targetKey] = value
+    }
+    const attrs = node.attributes ?? {}
+    const className = selectedId === node.uid ? 'outline outline-2 outline-blue-500 outline-offset-2' : 'hover:outline hover:outline-1 hover:outline-blue-300'
+    const children = childrenOf(node).map((child) => renderPreview(child, depth + 1))
+    const text = children.length ? null : node.text
+    const onClick = (event: MouseEvent<HTMLElement>) => { event.preventDefault(); event.stopPropagation(); setSelectedId(node.uid) }
+    if (tag === 'img') {
+      const src = attrs.src || attrs['data-src'] || attrs['data-lazy-src'] || attrs['srcset']?.split(',')[0]?.trim().split(' ')[0]
+      return <img key={node.uid} src={src} alt={attrs.alt || ''} onClick={onClick} className={className} style={{ ...style, maxWidth: '100%', objectFit: 'contain' }} />
+    }
+    if (tag === 'input') return <input key={node.uid} readOnly value={attrs.value || ''} placeholder={attrs.placeholder || ''} onClick={onClick} className={className} style={style} />
+    if (tag === 'textarea') return <textarea key={node.uid} readOnly value={text || attrs.value || ''} onClick={onClick} className={className} style={style} />
+    if (tag === 'a') return <a key={node.uid} href={attrs.href || "#"} onClick={onClick} className={className} style={style}>{text}{children}</a>
+    if (tag === 'button') return <button key={node.uid} type="button" onClick={onClick} className={className} style={style}>{text}{children}</button>
+    if (tag === 'video') return <div key={node.uid} onClick={onClick} className={className} style={{ ...style, minHeight: 100, background: '#171717', color: '#d4d4d4', display: 'grid', placeItems: 'center' }}>Vídeo</div>
+    return createElement(tag, { key: node.uid, onClick, className, style }, text, ...children)
+  }
+
+  if (status === 'loading') return <main className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">A carregar o editor…</main>
+  if (status === 'error' && !model) return <main className="flex min-h-screen items-center justify-center bg-background p-6 text-center"><div><AlertCircle className="mx-auto mb-3 size-6 text-destructive" /><p className="font-medium">Não foi possível abrir o editor</p><p className="mt-2 text-sm text-muted-foreground">{error}</p></div></main>
+
+  return <main className="min-h-screen bg-muted/20 text-foreground">
+    <header className="sticky top-0 z-20 flex min-h-16 flex-wrap items-center gap-3 border-b border-border bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
+      <Button variant="ghost" size="icon" aria-label="Voltar" onClick={() => window.history.back()}><ArrowLeft /></Button>
+      <div className="min-w-0"><p className="text-[11px] text-muted-foreground">Editor visual</p><h1 className="truncate text-sm font-semibold">{model?.title || 'Página reconstruída'}</h1></div>
+      <Badge variant="outline" className="hidden sm:inline-flex">{status === 'saved' || !dirty ? 'Guardado' : 'Alterações por guardar'}</Badge>
+      <div className="ml-auto flex items-center gap-1"><Button variant="ghost" size="icon" aria-label="Desfazer" onClick={undo} disabled={!undoStack.length}><Undo2 /></Button><Button variant="ghost" size="icon" aria-label="Refazer" onClick={redo} disabled={!future.length}><Redo2 /></Button><Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={() => setPreviewOnly((value) => !value)}><Eye data-icon="inline-start" /> {previewOnly ? "Voltar ao editor" : "Pré-visualizar"}</Button><Button size="sm" onClick={save} disabled={!dirty || status === 'saving'}><Save data-icon="inline-start" /> {status === 'saving' ? 'A guardar…' : 'Guardar'}</Button></div>
+    </header>
+    <div className="border-b border-border bg-background px-4 py-2 text-center text-xs text-muted-foreground">Estás a editar o modelo real devolvido pela API. As alterações são guardadas no backend.</div>
+    <div className={previewOnly ? "grid min-h-[calc(100vh-104px)] grid-cols-1" : "grid min-h-[calc(100vh-104px)] lg:grid-cols-[240px_minmax(0,1fr)_300px]"}>
+      {!previewOnly && <aside className="border-b border-border bg-background p-4 lg:border-b-0 lg:border-r"><div className="mb-4 flex items-center justify-between"><div><p className="text-sm font-semibold">Conteúdo</p><p className="mt-1 text-xs text-muted-foreground">Escolhe uma parte da página</p></div><Layers3 className="size-4 text-muted-foreground" /></div><div className="mb-4 flex items-center gap-2 rounded-md border border-border px-2"><Search className="size-3.5 text-muted-foreground" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Pesquisar conteúdo" className="h-8 min-w-0 flex-1 bg-transparent text-xs outline-none" /></div><div className="max-h-[55vh] overflow-y-auto">{root ? renderTree(root) : <p className="text-xs text-muted-foreground">Este modelo não tem conteúdo editável.</p>}</div></aside>}
+      <section className={previewOnly ? "flex min-w-0 flex-col bg-muted/30 p-4 sm:p-6" : "flex min-w-0 flex-col bg-muted/30 p-4 sm:p-6"}><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-medium text-muted-foreground">Pré-visualização</p><p className="text-sm font-semibold">{selectedNode ? labelForNode(selectedNode) : 'Selecciona uma secção'}</p></div><div className="flex items-center gap-1 rounded-lg border border-border bg-background p-1"><Button variant={viewport === 'desktop' ? 'secondary' : 'ghost'} size="icon-sm" aria-label="Computador" onClick={() => { setViewport('desktop'); const nextRoot = model?.viewports.find((item) => item.kind === 'desktop')?.dom as VisualNode | undefined; if (nextRoot) setSelectedId(nextRoot.uid) }}><Monitor /></Button><Button variant={viewport === 'tablet' ? 'secondary' : 'ghost'} size="icon-sm" aria-label="Tablet" onClick={() => { setViewport('tablet'); const nextRoot = model?.viewports.find((item) => item.kind === 'tablet')?.dom as VisualNode | undefined; if (nextRoot) setSelectedId(nextRoot.uid) }}><Tablet /></Button><Button variant={viewport === 'mobile' ? 'secondary' : 'ghost'} size="icon-sm" aria-label="Telemóvel" onClick={() => { setViewport('mobile'); const nextRoot = model?.viewports.find((item) => item.kind === 'mobile')?.dom as VisualNode | undefined; if (nextRoot) setSelectedId(nextRoot.uid) }}><Smartphone /></Button></div></div><div className="flex flex-1 items-start justify-center overflow-auto rounded-xl border border-border bg-background p-4 shadow-sm sm:p-8"><div className={`min-h-[480px] w-full overflow-auto rounded-lg border border-dashed border-border bg-white p-5 text-black transition-all ${viewport === 'mobile' ? 'max-w-[390px]' : viewport === 'tablet' ? 'max-w-[720px]' : 'max-w-[1080px]'}`}><div className="mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 text-xs text-gray-500"><span className="size-2 rounded-full bg-emerald-500" /> Pré-visualização · {viewport === 'mobile' ? 'Telemóvel' : viewport === 'tablet' ? 'Tablet' : 'Computador'}</div>{root ? renderPreview(root) : <p className="py-24 text-center text-sm text-gray-500">Este modelo não contém uma página para pré-visualizar.</p>}</div></div></section>
+      {!previewOnly && <aside className="border-t border-border bg-background p-4 lg:border-t-0 lg:border-l"><div className="mb-5"><p className="text-sm font-semibold">Editar elemento</p><p className="mt-1 text-xs text-muted-foreground">Opções simples para o conteúdo seleccionado</p></div>{selectedNode ? <div className="flex flex-col gap-5"><div><label htmlFor="element-text" className="text-xs font-medium">{['img', 'video'].includes(selectedNode.tag.toLowerCase()) ? 'Descrição ou texto' : 'Texto do elemento'}</label><textarea id="element-text" value={selectedNode.text ?? ''} onChange={(event) => updateText(event.target.value)} rows={4} className="mt-2 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder="Escreve o conteúdo…" /></div>{['img', 'video', 'source'].includes(selectedNode.tag.toLowerCase()) && <div><label htmlFor="element-src" className="text-xs font-medium">URL do ficheiro</label><input id="element-src" value={selectedNode.attributes?.src ?? selectedNode.attributes?.['data-src'] ?? ''} onChange={(event) => updateAttribute('src', event.target.value)} className="mt-2 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder="https://…" /></div>}{selectedNode.tag.toLowerCase() === 'img' && <div><label htmlFor="element-alt" className="text-xs font-medium">Texto alternativo</label><input id="element-alt" value={selectedNode.attributes?.alt ?? ''} onChange={(event) => updateAttribute('alt', event.target.value)} className="mt-2 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder="Descrição acessível da imagem" /></div>}{selectedNode.tag.toLowerCase() === 'a' && <div><label htmlFor="element-href" className="text-xs font-medium">Destino da ligação</label><input id="element-href" value={selectedNode.attributes?.href ?? ''} onChange={(event) => updateAttribute('href', event.target.value)} className="mt-2 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder="https://…" /></div>}<Separator /><div><p className="text-xs font-medium">Tipo de elemento</p><p className="mt-2 text-sm">{labelForNode(selectedNode)}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">As propriedades apresentadas dependem do conteúdo capturado. A pré-visualização não executa formulários nem envia dados.</p></div><Card className="border-border bg-muted/30"><CardHeader className="p-4"><CardTitle className="text-xs">Pixels e acompanhamento</CardTitle></CardHeader><CardContent className="p-4 pt-0 text-xs text-muted-foreground">A configuração de pixels requer um endpoint de backend que não existe no contrato actual. Nenhum pixel é apresentado como activo.</CardContent></Card></div> : <div className="rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">Selecciona um título, texto, imagem ou botão para editar.</div>}{error && <p className="mt-5 text-xs text-destructive" role="alert">{error}</p>}</aside>}
+    </div>
+  </main>
 }
-
