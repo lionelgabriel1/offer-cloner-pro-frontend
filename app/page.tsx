@@ -124,7 +124,7 @@ export default function Page() {
               <button key={item.label} onClick={() => item.label === 'Visão geral' ? router.push('/') : item.label === 'Análises' || item.label === 'Page Models' || item.label === 'Relatórios' ? handleAction(`${item.label}: inicia primeiro um rastreamento real para consultar estes dados.`) : handleAction(`${item.label}: disponível quando a API real estiver ligada.`)} className={`flex h-10 items-center gap-3 rounded-lg px-3 text-sm transition-colors ${item.active ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' : 'text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground'}`}>
                 <item.icon className="size-4" />
                 {item.label}
-                {item.label === 'Análises' && <span className="ml-auto rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">2</span>}
+                
               </button>
             ))}
           </nav>
@@ -139,12 +139,12 @@ export default function Page() {
           </nav>
           <div className="mt-auto rounded-xl border border-border bg-background/60 p-4">
             <div className="mb-3 flex items-center justify-between">
-              <span className="text-xs font-medium">Plano Pro</span>
-              <Badge variant="secondary" className="text-[10px]">ATIVO</Badge>
+              <span className="text-xs font-medium">Workspace</span>
+              <Badge variant="outline" className="text-[10px]">API</Badge>
             </div>
             <div className="mb-2 flex items-end justify-between text-xs">
-              <span className="text-muted-foreground">Crawls este mês</span>
-              <span className="font-medium">12 / 50</span>
+              <span className="text-muted-foreground">Uso agregado</span>
+              <span className="font-medium">Não disponível</span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full w-1/4 rounded-full bg-primary" /></div>
             <button onClick={() => handleAction('Gestão de subscrição disponível quando o billing estiver configurado.')} className="mt-3 text-xs font-medium text-primary hover:underline">Gerir subscrição <ArrowUpRight className="ml-1 inline size-3" /></button>
@@ -152,8 +152,8 @@ export default function Page() {
         </div>
         <Separator />
         <div className="flex items-center gap-3 px-5 py-4">
-          <Avatar className="size-8"><AvatarFallback>LM</AvatarFallback></Avatar>
-          <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">Lara Martins</p><p className="truncate text-xs text-muted-foreground">lara@studio.pt</p></div>
+          <Avatar className="size-8"><AvatarFallback>OC</AvatarFallback></Avatar>
+          <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">Conta actual</p><p className="truncate text-xs text-muted-foreground">Sessão Supabase</p></div>
           <ChevronDown className="size-4 text-muted-foreground" />
         </div>
       </aside>
@@ -168,7 +168,7 @@ export default function Page() {
           </div>
           <div className="flex items-center gap-2 sm:gap-4">
             <div className="hidden items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground md:flex"><Search className="size-3.5" /><span>Pesquisar</span><kbd className="ml-5 rounded border border-border bg-background px-1.5 py-0.5 text-[10px]">⌘ K</kbd></div>
-            <Button variant="ghost" size="icon" aria-label="Notificações" onClick={() => handleAction('Não existem notificações novas neste modo de demonstração.')}><Bell className="size-4" /><span className="absolute ml-4 mt-[-14px] size-1.5 rounded-full bg-primary" /></Button>
+            <Button variant="ghost" size="icon" aria-label="Notificações" onClick={() => handleAction('Não existem notificações disponíveis.')}><Bell className="size-4" /><span className="absolute ml-4 mt-[-14px] size-1.5 rounded-full bg-primary" /></Button>
             <Button variant="outline" size="sm" className="hidden gap-2 sm:flex" onClick={() => handleAction('A ajuda estará disponível quando a integração for configurada.')}><CircleHelp className="size-4" /> Ajuda</Button>
           </div>
         </header>
@@ -178,7 +178,7 @@ export default function Page() {
           {newAnalysisOpen && <Card className="mb-7 border-primary/30 bg-primary/[0.04]"><CardHeader className="flex flex-row items-start justify-between gap-4 px-5 py-4 sm:px-6"><div><CardTitle className="text-sm font-semibold">Iniciar nova análise</CardTitle><p className="mt-1 text-xs text-muted-foreground">Introduz um URL autorizado para preparar o rastreamento.</p></div><Button variant="ghost" size="icon" onClick={() => setNewAnalysisOpen(false)} aria-label="Fechar nova análise"><X /></Button></CardHeader><CardContent className="px-5 pb-5 sm:px-6"><form className="flex flex-col gap-3 sm:flex-row" onSubmit={(event: FormEvent<HTMLFormElement>) => handleStartAnalysis(event)}><input aria-label="URL do site" value={analysisUrl} onChange={(event) => setAnalysisUrl(event.target.value)} placeholder="https://exemplo.pt" className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-sm outline-none ring-primary/30 placeholder:text-muted-foreground focus:ring-2" /><Button type="submit" className="gap-2" disabled={isStartingAnalysis}>{isStartingAnalysis ? 'A iniciar…' : <><Globe2 className="size-4" /> Iniciar análise</>}</Button></form>{demoNotice && <p className="mt-3 text-xs text-primary" role="status">{demoNotice}</p>}<p className="mt-3 text-[11px] text-muted-foreground">Demonstração visual: nenhum pedido foi enviado porque a API ainda não está configurada.</p></CardContent></Card>}
           <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-2 text-sm font-medium text-primary">Workspace pessoal</p><h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Bom dia, Lara.</h2><p className="mt-1 text-sm text-muted-foreground">Aqui está o resumo das tuas análises autorizadas.</p></div><Button className="w-full gap-2 sm:w-auto" onClick={() => { setNewAnalysisOpen(true); setDemoNotice('') }}><Plus className="size-4" /> Nova análise</Button></div>
 
-          <div className="mb-7 rounded-xl border border-primary/20 bg-primary/[0.06] px-4 py-3 sm:flex sm:items-center sm:justify-between"><div className="flex items-start gap-3"><div className="mt-0.5 rounded-full bg-primary/10 p-1.5 text-primary"><ShieldCheck className="size-4" /></div><div><p className="text-sm font-medium">{apiState === 'unconfigured' ? 'API não configurada' : apiState === 'checking' ? 'A verificar a API' : apiState === 'available' ? 'API disponível' : 'API indisponível'}</p><p className="mt-0.5 text-xs text-muted-foreground">{apiState === 'available' ? 'O endpoint /health respondeu positivamente. O rastreamento completo ainda não foi validado.' : apiState === 'checking' ? 'A confirmar a disponibilidade real do endpoint /health.' : apiState === 'unconfigured' ? 'Configura a API para activar pedidos reais. Os valores abaixo são dados fictícios.' : 'O endpoint /health não está disponível. Os valores abaixo são dados fictícios.'}</p></div></div><button onClick={() => handleAction('Configuração necessária: NEXT_PUBLIC_API_BASE_URL e credenciais Supabase.')} className="mt-3 pl-11 text-xs font-medium text-primary hover:underline sm:mt-0 sm:pl-0">Configurar integração <ArrowUpRight className="ml-1 inline size-3" /></button></div>
+          <div className="mb-7 rounded-xl border border-primary/20 bg-primary/[0.06] px-4 py-3 sm:flex sm:items-center sm:justify-between"><div className="flex items-start gap-3"><div className="mt-0.5 rounded-full bg-primary/10 p-1.5 text-primary"><ShieldCheck className="size-4" /></div><div><p className="text-sm font-medium">{apiState === 'unconfigured' ? 'API não configurada' : apiState === 'checking' ? 'A verificar a API' : apiState === 'available' ? 'API disponível' : 'API indisponível'}</p><p className="mt-0.5 text-xs text-muted-foreground">{apiState === 'available' ? 'O endpoint /health respondeu positivamente. O rastreamento completo ainda não foi validado.' : apiState === 'checking' ? 'A confirmar a disponibilidade real do endpoint /health.' : apiState === 'unconfigured' ? 'Configura a API para activar pedidos reais. Não existem dados agregados disponíveis.' : 'O endpoint /health não está disponível. Não existem dados agregados disponíveis.'}</p></div></div><button onClick={() => handleAction('Configuração necessária: NEXT_PUBLIC_API_BASE_URL e credenciais Supabase.')} className="mt-3 pl-11 text-xs font-medium text-primary hover:underline sm:mt-0 sm:pl-0">Configurar integração <ArrowUpRight className="ml-1 inline size-3" /></button></div>
 
           <section className="grid gap-4" aria-label="Resumo de métricas"><Card><CardContent className="flex items-start gap-3 p-5"><Activity className="mt-0.5 size-4 text-muted-foreground" /><div><p className="text-sm font-medium">Sem métricas disponíveis</p><p className="mt-1 text-xs text-muted-foreground">O backend não disponibiliza uma listagem agregada de projectos ou jobs. Inicia um rastreamento para consultar dados reais.</p></div></CardContent></Card></section>
 
