@@ -183,7 +183,7 @@ export default function EditorPage() {
     const onClick = (event: MouseEvent<HTMLElement>) => { event.preventDefault(); event.stopPropagation(); if (!previewOnly) setSelectedId(node.uid) }
     if (tag === 'img') {
       const src = attrs.src || attrs['data-src'] || attrs['data-lazy-src'] || attrs['srcset']?.split(',')[0]?.trim().split(' ')[0]
-      return <img key={node.uid} src={src} alt={attrs.alt || ''} onClick={onClick} className={className} style={{ ...style, maxWidth: '100%', objectFit: 'contain' }} />
+      return <img key={node.uid} src={src} alt={attrs.alt || ''} onClick={onClick} className={className} style={{ ...style, maxWidth: style.maxWidth ?? '100%', objectFit: style.objectFit ?? 'contain' }} />
     }
     if (tag === 'input') return <input key={node.uid} readOnly value={attrs.value || ''} placeholder={attrs.placeholder || ''} type={attrs.type || 'text'} onClick={onClick} className={className} style={style} />
     if (tag === 'textarea') return <textarea key={node.uid} readOnly value={text || attrs.value || ''} placeholder={attrs.placeholder || ''} onClick={onClick} className={className} style={style} />
