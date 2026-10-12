@@ -13,6 +13,8 @@ export type EditorDomNode = { uid: string; tag: string; id?: string; classes?: s
 export type PageModel = { schemaVersion: '1.0'; projectId: string; sourceUrl: string; capturedAt: string; title: string; viewports: Array<Record<string, unknown>>; assets: Array<Record<string, unknown>>; metadata: { userAgent: string; durationMs: number; warnings: string[] }; navigation?: Record<string, unknown>; [key: string]: unknown }
 export type ProjectEditorResponse = { project: { id: string; sourceUrl: string; status: string }; model: PageModel }
 export type UpdateProjectModelResponse = { ok: true; status: 'edited'; model: PageModel }
+export type CreateEditorProjectResponse = { project: { id: string; sourceUrl: string; status: string }; model: PageModel }
+export type CrawlActionResponse = { jobId: string; status: string; progress?: Progress | null; message?: string }
 
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -34,10 +36,10 @@ export type ApiClient = ReturnType<typeof createApiClient>
 
 export function createApiClient(baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? process.env.VITE_API_BASE_URL) {
   const configured = Boolean(baseUrl)
-  async function request<T>(path: string, token?: string, init?: RequestInit, responseType: 'json' | 'text' | 'blob' = 'json'): Promise<T> {
+  async function request<T>(path: string, token?: string, init?: RequestInit, responseType: 'json' | 'text' | 'blob' = 'json', authenticate = true): Promise<T> {
     if (!baseUrl) throw new Error('API não configurada: defina NEXT_PUBLIC_API_BASE_URL.')
     let accessToken = token
-    if (!accessToken && typeof window !== 'undefined') {
+    if (authenticate && !accessToken && typeof window !== 'undefined') {
       const { getAccessToken } = await import('@/lib/supabase/client')
       accessToken = (await getAccessToken()) ?? undefined
     }
@@ -58,10 +60,10 @@ export function createApiClient(baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?
   }
   return {
     configured,
-    checkHealth: () => request<HealthResponse>('/health'),
-    getHealth: () => request<HealthResponse>('/health'),
-    cancelCrawlJob: (id: string, token?: string) => request<void>(`/api/crawl-jobs/${encodeURIComponent(id)}/cancel`, token, { method: 'POST' }),
-    resumeCrawlJob: (id: string, options: Record<string, unknown> = {}, token?: string) => request<void>(`/api/crawl-jobs/${encodeURIComponent(id)}/resume`, token, { method: 'POST', body: JSON.stringify({ options }) }),
+    checkHealth: () => request<HealthResponse>('/health', undefined, undefined, 'json', false),
+    getHealth: () => request<HealthResponse>('/health', undefined, undefined, 'json', false),
+    cancelCrawlJob: (id: string, token?: string) => request<CrawlActionResponse>(`/api/crawl-jobs/${encodeURIComponent(id)}/cancel`, token, { method: 'POST' }),
+    resumeCrawlJob: (id: string, options: Record<string, unknown> = {}, token?: string) => request<CrawlActionResponse>(`/api/crawl-jobs/${encodeURIComponent(id)}/resume`, token, { method: 'POST', body: JSON.stringify(options) }),
     createCrawlJob: (url: string, token?: string) => request<CreateCrawlJobResponse>('/api/crawl-jobs', token, { method: 'POST', body: JSON.stringify({ url }) }),
     getCrawlJob: (id: string, token?: string) => request<CrawlJobStatus>(`/api/crawl-jobs/${encodeURIComponent(id)}`, token),
     listPages: (id: string, params: { offset?: number; limit?: number; status?: CrawlPageStatus } = {}, token?: string) => { const query = new URLSearchParams(); if (params.offset !== undefined) query.set('offset', String(params.offset)); if (params.limit !== undefined) query.set('limit', String(params.limit)); if (params.status) query.set('status', params.status); return request<CrawlPageListResponse>(`/api/crawl-jobs/${encodeURIComponent(id)}/pages?${query}`, token) },
@@ -69,6 +71,7 @@ export function createApiClient(baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?
     getPageModel: (id: string, pageKey: string, token?: string) => request<Record<string, unknown>>(`/api/crawl-jobs/${encodeURIComponent(id)}/pages/${encodeURIComponent(pageKey)}/page-model`, token),
     getReport: (id: string, format: 'json' | 'markdown' = 'json', token?: string) => format === 'markdown' ? request<string>(`/api/crawl-jobs/${encodeURIComponent(id)}/report?format=markdown`, token, undefined, 'text') : request<CrawlReport>(`/api/crawl-jobs/${encodeURIComponent(id)}/report?format=json`, token),
     getArtifacts: (id: string, path: string, token?: string) => request<Blob>(`/api/crawl-jobs/${encodeURIComponent(id)}/artifacts?path=${encodeURIComponent(path)}`, token, undefined, 'blob'),
+    createEditorProjectFromCrawl: (id: string, pageKey: string, token?: string) => request<CreateEditorProjectResponse>(`/api/crawl-jobs/${encodeURIComponent(id)}/editor-project`, token, { method: 'POST', body: JSON.stringify({ pageKey }) }),
     getProjectEditor: (id: string, token?: string) => request<ProjectEditorResponse>(`/api/projects/${encodeURIComponent(id)}/editor`, token),
     updateProjectEditor: (id: string, model: PageModel, token?: string) => request<UpdateProjectModelResponse>(`/api/projects/${encodeURIComponent(id)}/editor/model`, token, { method: 'PUT', body: JSON.stringify({ model }) }),
   }

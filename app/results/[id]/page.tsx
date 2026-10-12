@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, ArrowLeft, FileCode2, FileImage, FileText, FolderTree, Search, Server, Sparkles } from 'lucide-react'
+import { useParams, useRouter } from 'next/navigation'
+import { AlertTriangle, ArrowLeft, FileCode2, FileImage, FileText, FolderTree, Pencil, Search, Server, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,15 +17,12 @@ const tabs = [
   { id: 'resources', label: 'Recursos', icon: Server },
   { id: 'report', label: 'Relatório', icon: FileText },
 ] as const
-const demoPages: SitePage[] = [
-  { pageKey: 'demo-home', title: 'Página inicial', requestedUrl: 'https://demo.example.com/', status: 'analyzed' as const, depth: 0, screenshotPaths: [], stateIds: [], redirects: [], linksFound: 1, assetsFound: 0, assetsDownloaded: 0, assetsFailed: 0, limitations: [], canonicalUrl: 'https://demo.example.com/' },
-  { pageKey: 'demo-pricing', title: 'Preços', requestedUrl: 'https://demo.example.com/pricing', status: 'pending' as const, depth: 1, screenshotPaths: [], stateIds: [], redirects: [], linksFound: 0, assetsFound: 0, assetsDownloaded: 0, assetsFailed: 0, limitations: [], canonicalUrl: 'https://demo.example.com/pricing' },
-]
 type SiteModelView = { errors?: string[]; limitations?: string[]; interactions?: unknown[]; pages?: unknown[] }
 type ArtifactAsset = Record<string, unknown> & { localPath?: string; path?: string; mimeType?: string; originalUrl?: string; downloaded?: boolean }
 
-export default function ResultsPage({ params }: { params: { id: string } }) {
-  const id = params.id
+export default function ResultsPage() {
+  const { id } = useParams<{ id: string }>()
+  const router = useRouter()
   const [active, setActive] = useState<(typeof tabs)[number]['id']>('overview')
   const [query, setQuery] = useState('')
   const [job, setJob] = useState<CrawlJobStatus | null>(null)
@@ -39,6 +37,8 @@ export default function ResultsPage({ params }: { params: { id: string } }) {
   const [reportError, setReportError] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [editorCreating, setEditorCreating] = useState(false)
+  const [editorError, setEditorError] = useState('')
 
   useEffect(() => {
     if (!isApiConfigured) { setLoading(false); return }
@@ -77,21 +77,36 @@ export default function ResultsPage({ params }: { params: { id: string } }) {
     return () => { alive = false }
   }, [id, active, reportFormat])
 
-  const visiblePages = useMemo(() => (isApiConfigured ? pages : demoPages).filter(item => `${item.title ?? ''} ${item.requestedUrl}`.toLowerCase().includes(query.toLowerCase())), [pages, query])
+  const visiblePages = useMemo(() => pages.filter(item => `${item.title ?? ''} ${item.requestedUrl}`.toLowerCase().includes(query.toLowerCase())), [pages, query])
   const selectedPage = pages.find(page => page.pageKey === selectedPageKey) ?? null
   const viewports = Array.isArray(pageModel?.viewports) ? pageModel.viewports as Array<Record<string, unknown>> : []
   const assets = Array.isArray(pageModel?.assets) ? pageModel.assets as ArtifactAsset[] : []
   const screenshotPaths = selectedPage?.screenshotPaths ?? []
 
+  async function openEditor() {
+    if (!selectedPage || !pageModel || editorCreating) return
+    setEditorCreating(true)
+    setEditorError('')
+    try {
+      const result = await apiClient.createEditorProjectFromCrawl(id, selectedPage.pageKey)
+      router.push(`/editor/${encodeURIComponent(result.project.id)}`)
+    } catch (cause) {
+      setEditorError(cause instanceof Error ? cause.message : 'Não foi possível preparar o editor para esta página.')
+    } finally {
+      setEditorCreating(false)
+    }
+  }
+
   return <div className="min-h-screen bg-background text-foreground">
-    <header className="flex h-16 items-center gap-4 border-b border-border px-5 sm:px-8"><Link href={`/crawls/${id}`} aria-label="Voltar ao rastreamento"><Button variant="ghost" size="icon"><ArrowLeft /></Button></Link><div><p className="text-xs text-muted-foreground">Resultados / {id}</p><h1 className="font-semibold">Resultados da análise</h1></div><Badge variant="secondary" className="ml-auto">{job ? job.status : isApiConfigured ? loading ? 'A carregar…' : 'Sem dados' : 'Demonstração'}</Badge></header>
+    <header className="flex h-16 items-center gap-4 border-b border-border px-5 sm:px-8"><Link href={`/crawls/${id}`} aria-label="Voltar ao rastreamento"><Button variant="ghost" size="icon"><ArrowLeft /></Button></Link><div><p className="text-xs text-muted-foreground">Resultados / {id}</p><h1 className="font-semibold">Resultados da análise</h1></div><Badge variant="secondary" className="ml-auto">{job ? job.status : loading ? 'A carregar…' : 'Sem dados'}</Badge></header>
     <main className="mx-auto max-w-6xl px-5 py-7 sm:px-8">
-      <div className="mb-6"><p className="mb-2 text-sm font-medium text-primary">Workspace / Resultados</p><h2 className="text-2xl font-semibold tracking-tight">Explorar análise</h2><p className="mt-1 break-all text-sm text-muted-foreground">{job?.seedUrl ?? 'Consulta páginas, estrutura, recursos e relatório sem alterar os dados do backend.'}</p></div>
-      {!isApiConfigured && <div className="mb-6 flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/[0.06] p-4"><Sparkles className="mt-0.5 size-4 shrink-0 text-primary" /><div><p className="text-sm font-medium">Modo de demonstração visual</p><p className="mt-1 text-xs text-muted-foreground">Define NEXT_PUBLIC_API_BASE_URL e inicia sessão Supabase. Os exemplos são fictícios e não representam resultados reais.</p></div></div>}
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="mb-2 text-sm font-medium text-primary">Workspace / Resultados</p><h2 className="text-2xl font-semibold tracking-tight">Explorar análise</h2><p className="mt-1 break-all text-sm text-muted-foreground">{job?.seedUrl ?? 'Os detalhes da análise aparecerão quando a API devolver dados reais.'}</p></div><Button onClick={openEditor} disabled={!isApiConfigured || !selectedPage || !pageModel || editorCreating} className="gap-2"><Pencil data-icon="inline-start" />{editorCreating ? 'A preparar editor…' : 'Editar página selecionada'}</Button></div>
+      {!isApiConfigured && <div className="mb-6 rounded-xl border border-border bg-muted/30 p-4 text-sm text-muted-foreground">A API ainda não está configurada. Esta página não usa resultados de demonstração.</div>}
       {error && <p className="mb-5 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive" role="alert">{error}</p>}
+      {editorError && <p className="mb-5 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive" role="alert">{editorError}</p>}
       <div className="flex gap-1 overflow-x-auto border-b border-border pb-px" role="tablist" aria-label="Secções dos resultados">{tabs.map(tab => { const Icon = tab.icon; return <button key={tab.id} role="tab" aria-selected={active === tab.id} onClick={() => setActive(tab.id)} className={`flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-xs font-medium transition-colors ${active === tab.id ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}><Icon className="size-3.5" />{tab.label}</button> })}</div>
       <section className="mt-6">
-        {active === 'overview' && <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Stat label="Estado geral" value={job?.status ?? (isApiConfigured ? loading ? 'A carregar…' : '—' : 'Demo')} detail={job?.finishedAt ? `Concluída ${new Date(job.finishedAt).toLocaleString()}` : `${job?.progress?.percentage ?? 0}% de progresso`} /><Stat label="Páginas" value={String(pageResponse?.pagination.total ?? (isApiConfigured ? 0 : demoPages.length))} detail={`${job?.progress?.pages.analyzed ?? 0} analisadas`} /><Stat label="Recursos" value={String(job?.progress?.assets.found ?? 0)} detail={`${job?.progress?.assets.downloaded ?? 0} descarregados`} /><Stat label="Relatório" value={isApiConfigured ? 'Disponível' : 'Demo'} detail={siteModel?.limitations?.length ? `${siteModel.limitations.length} limitações` : 'JSON e Markdown'} /></div>}
+        {active === 'overview' && <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Stat label="Estado geral" value={job?.status ?? (loading ? 'A carregar…' : 'Sem dados')} detail={job?.finishedAt ? `Concluída ${new Date(job.finishedAt).toLocaleString()}` : `${job?.progress?.percentage ?? 0}% de progresso`} /><Stat label="Páginas" value={String(pageResponse?.pagination.total ?? 0)} detail={`${job?.progress?.pages.analyzed ?? 0} analisadas`} /><Stat label="Recursos" value={String(job?.progress?.assets.found ?? 0)} detail={`${job?.progress?.assets.downloaded ?? 0} descarregados`} /><Stat label="Relatório" value={isApiConfigured ? 'A consultar' : 'Não disponível'} detail={siteModel?.limitations?.length ? `${siteModel.limitations.length} limitações` : 'JSON e Markdown'} /></div>}
         {active === 'pages' && <Card><CardHeader className="gap-4 sm:flex-row sm:items-center sm:justify-between"><div><CardTitle className="text-sm">Páginas rastreadas</CardTitle><p className="mt-1 text-xs text-muted-foreground">Seleciona uma página para consultar o respetivo Page Model e screenshots.</p></div><div className="flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3"><Search className="size-3.5 text-muted-foreground" /><input value={query} onChange={event => setQuery(event.target.value)} aria-label="Pesquisar páginas" placeholder="Pesquisar" className="w-32 bg-transparent text-xs outline-none placeholder:text-muted-foreground" /></div></CardHeader><CardContent className="p-0">{visiblePages.map(page => <button type="button" key={page.pageKey} onClick={() => setSelectedPageKey(page.pageKey)} className={`flex w-full items-center gap-3 border-t border-border px-5 py-4 text-left hover:bg-muted/40 ${selectedPageKey === page.pageKey ? 'bg-muted/50' : ''}`}><div className="flex size-9 items-center justify-center rounded-lg bg-muted"><FolderTree className="size-4 text-muted-foreground" /></div><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{page.title || page.finalUrl || page.requestedUrl}</p><p className="truncate text-xs text-muted-foreground">{page.requestedUrl}</p></div><Badge variant={page.status === 'analyzed' ? 'default' : 'secondary'} className="text-[10px]">{page.status}</Badge></button>)}{!visiblePages.length && <Empty title="Sem páginas" text={loading ? 'A carregar páginas…' : 'Não foram encontradas páginas para este termo.'} />}</CardContent><div className="flex items-center justify-between border-t border-border px-5 py-3"><span className="text-xs text-muted-foreground">A mostrar {visiblePages.length} de {pageResponse?.pagination.total ?? visiblePages.length} (máximo 100)</span><Link href={`/crawls/${id}`}><Button variant="outline" size="sm">Ver paginação e progresso</Button></Link></div></Card>}
         {active === 'structure' && <Card><CardHeader><CardTitle className="text-sm">Page Model da página selecionada</CardTitle><p className="text-xs text-muted-foreground">{selectedPage?.requestedUrl ?? 'Seleciona uma página no separador Páginas.'}</p></CardHeader><CardContent>{pageModelError ? <p className="text-sm text-destructive" role="alert">{pageModelError}</p> : pageModel ? <><p className="mb-3 text-xs text-muted-foreground">{viewports.length} viewport(s) persistidos. O modelo é apresentado como JSON para inspeção, sem executar HTML capturado.</p><pre className="max-h-[65vh] overflow-auto rounded-lg bg-muted p-4 text-[11px] leading-relaxed">{JSON.stringify(pageModel, null, 2)}</pre></> : <Empty title="Page Model não carregado" text={loading ? 'A carregar…' : 'Seleciona uma página analisada.'} icon={<FileCode2 />} />}</CardContent></Card>}
         {active === 'screenshots' && <div className="space-y-4"><div className="flex items-center justify-between"><div><h3 className="text-sm font-semibold">Capturas de ecrã</h3><p className="mt-1 text-xs text-muted-foreground">{selectedPage?.requestedUrl ?? 'Seleciona uma página analisada.'}</p></div><Badge variant="outline">{screenshotPaths.length} ficheiro(s)</Badge></div>{screenshotPaths.length ? <div className="grid gap-4 md:grid-cols-2">{screenshotPaths.slice(0, 6).map(filePath => <ArtifactPreview key={filePath} jobId={id} path={filePath} image title={filePath.split('/').at(-1) || 'Screenshot'} />)}</div> : <Empty title="Ainda não existem capturas" text={isApiConfigured ? 'A página selecionada não tem screenshot persistido.' : 'As imagens serão carregadas a partir de artifacts quando a API estiver configurada.'} icon={<FileImage />} />}</div>}
