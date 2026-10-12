@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useParams } from 'next/navigation'
 import { AlertTriangle, ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, FileJson2, Globe2, RefreshCw } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -12,8 +13,8 @@ type SiteModelView = { errors?: string[]; limitations?: string[] }
 const labels: Record<string, string> = { queued: 'Na fila', running: 'A analisar', paused: 'Pausada', cancelled: 'Cancelada', completed: 'Concluída', partial: 'Parcial', failed: 'Falhou', analyzed: 'Analisada', in_progress: 'Em análise', pending: 'Pendente', ignored: 'Ignorada' }
 const terminal = (status: string) => ['completed', 'partial', 'failed', 'paused', 'cancelled'].includes(status)
 
-export default function CrawlPage({ params }: { params: { id: string } }) {
-  const id = params.id
+export default function CrawlPage() {
+  const { id } = useParams<{ id: string }>()
   const [job, setJob] = useState<CrawlJobStatus | null>(null)
   const [pageResponse, setPageResponse] = useState<CrawlPageListResponse | null>(null)
   const [pages, setPages] = useState<SitePage[]>([])
