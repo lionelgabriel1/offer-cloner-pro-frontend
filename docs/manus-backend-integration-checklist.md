@@ -5,7 +5,7 @@ Este documento separa o que o frontend já chama do que ainda precisa de confirm
 ## 1. Configuração do frontend
 
 Variáveis usadas pelo frontend:
-- `NEXT_PUBLIC_API_BASE_URL`: URL base da API Manus, sem depender de uma rota específica.
+- `NEXT_PUBLIC_API_BASE_URL`: URL base da API, sem depender de uma rota específica. A origem observada é `https://offer-cloner-api.duckdns.org`; configurar este valor no ambiente Vercel.
 - `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: autenticação Supabase, quando usada.
 
 O cliente envia `Authorization: Bearer <access_token>` nas chamadas autenticadas, excepto no health check. O backend tem de aceitar o token Supabase e validar utilizador/propriedade do recurso. Não colocar chaves secretas no frontend.
@@ -15,6 +15,8 @@ O cliente envia `Authorization: Bearer <access_token>` nas chamadas autenticadas
 | Método | Rota | Contrato esperado |
 |---|---|---|
 | GET | `/health` | `{ "ok": true }` |
+| GET | `/api/projects?offset=0&limit=20` | Lista paginada de projetos próprios: `{ projects, pagination }`; `limit` máximo 100 |
+| GET | `/api/crawl-jobs?offset=0&limit=20` | Lista paginada de crawls próprios: `{ jobs, pagination }`; status e cobertura resumida |
 | POST | `/api/crawl-jobs` | Entrada actual: `{ "url": "https://..." }`; resposta com `jobId`, `siteId`, `status`, `progress`, `links` |
 | GET | `/api/crawl-jobs/:id` | Estado, URL inicial, opções, progresso e timestamps |
 | GET | `/api/crawl-jobs/:id/pages?offset=&limit=&status=` | Lista paginada de páginas descobertas/analisadas |
@@ -23,24 +25,35 @@ O cliente envia `Authorization: Bearer <access_token>` nas chamadas autenticadas
 | GET | `/api/crawl-jobs/:id/report?format=json\|markdown` | Relatório de páginas, interacções, erros e limitações |
 | GET | `/api/crawl-jobs/:id/artifacts?path=...` | Conteúdo binário de screenshot/asset autorizado |
 | POST | `/api/crawl-jobs/:id/cancel` | Cancelar job ainda activo |
-| POST | `/api/crawl-jobs/:id/resume` | Entrada actual: `{ "options": {} }` |
+| POST | `/api/crawl-jobs/:id/resume` | Corpo directo com opções de crawl, por exemplo `{ "maxDepth": 2 }` (não envolver em `options`) |
+| POST | `/api/crawl-jobs/:id/editor-project` | Entrada `{ "pageKey": "..." }`; resposta `201` com `project.id` e Page Model persistido |
 | GET | `/api/projects/:id/editor` | `{ "project": {...}, "model": PageModel }` |
 | PUT | `/api/projects/:id/editor/model` | Entrada `{ "model": PageModel }`; resposta `{ "ok": true, "status": "edited", "model": PageModel }` |
 
-O frontend já consome estas rotas; o Manus deve confirmar os nomes, schemas, códigos HTTP e regras de autorização com a implementação real. A tabela é o contrato esperado pelo cliente, não prova de que cada rota esteja publicada no servidor actual.
+As rotas foram confirmadas no código da API e no OpenAPI. O frontend deve usar um JWT Bearer obtido da sessão Supabase Auth para todas as rotas excepto `/health`. Na VPS, o health HTTPS respondeu `200` e uma chamada sem Bearer foi recusada com `401`; porém, o preflight CORS da Preview Vercel respondeu `403`, e as rotas novas da PR #2 ainda não estão no container publicado.
+
+## 2.1 Fluxo crawl → editor
+
+1. Criar e acompanhar o crawl pelas rotas acima.
+2. Listar páginas e obter o Page Model da página selecionada.
+3. Enviar `POST /api/crawl-jobs/:id/editor-project` com `{ "pageKey": "<pageKey>" }` e o Bearer token.
+4. Abrir `/editor/:project.id` usando o identificador devolvido (não usar o `jobId` como `projectId`).
+5. Ler o modelo com `GET /api/projects/:id/editor`, guardar com `PUT /api/projects/:id/editor/model` e confirmar a persistência ao reler.
+
+Este caminho passou um E2E local com Chromium numa fixture exclusiva de `localhost`, incluindo gravação e recuperação após reiniciar os adapters SQLite. Ainda não foi executado contra Supabase ou Hetzner.
 
 ## 3. Capacidades ainda por fechar
 
-### A. Rastreamento de todo o site
+### A. Rastreamento de todo o site — comportamento local confirmado
 - Começar pela URL fornecida e seguir links internos elegíveis.
 - Normalizar URLs, remover fragmentos, controlar query strings e evitar ciclos/duplicados.
 - Definir explicitamente o limite de páginas, profundidade, tempo, bytes e concorrência.
 - Guardar por página: URL pedida/final, profundidade, origem do link, status HTTP, estado de análise, links encontrados, assets e limitações.
 - Não seguir para outros domínios por defeito. Permitir subdomínios só com regra explícita.
 - Aplicar protecção SSRF também a redireccionamentos e DNS/IP resolvidos; bloquear loopback, redes privadas, link-local e endpoints de metadados.
-- O endpoint de criação deve documentar opções aceites antes de o frontend as enviar.
+- O endpoint de criação aceita opções documentadas, mas o frontend envia atualmente apenas `{ "url": ... }`; só adicionar controlos depois de definir limites/UX.
 
-### B. Exploração segura de formulários e quizzes
+### B. Exploração segura de formulários e quizzes — testes locais existentes
 - Registar campos, opções, passos, progresso, estados e transições observáveis.
 - Usar exclusivamente dados fictícios e marcados como teste.
 - Nunca enviar leads reais, criar contas reais, efectuar pagamentos, aceitar contratos ou executar acções irreversíveis.
@@ -48,10 +61,10 @@ O frontend já consome estas rotas; o Manus deve confirmar os nomes, schemas, c�
 - Reportar estados alcançados e não alcançados, motivo, limites e confiança; não declarar um fluxo completo quando só se viu o primeiro passo.
 - O relatório deve distinguir links descobertos de transições efectivamente testadas.
 
-### C. Listagem de projectos e jobs
-O frontend ainda não tem um contrato confirmado para listagem agregada. Definir endpoints paginados, filtrados pelo utilizador autenticado, para projectos e jobs recentes. Não expor recursos de outro utilizador.
+### C. Listagem de projectos e jobs — implementada localmente
+`GET /api/projects` e `GET /api/crawl-jobs` aceitam `offset` e `limit` (1–100, default 20), filtram por `owner_id` proveniente do Bearer token verificado e devolvem `pagination: { offset, limit, total, hasMore }`. As páginas `/projects` e `/crawls` consomem as respostas reais. Testes HTTP locais cobrem utilizadores distintos e paginação; a mesma query Postgres/Supabase ainda depende da execução da integração remota com credenciais privadas.
 
-### D. Preview e exportação
+### D. Preview e exportação — exportação de projeto em falta
 Definir se a exportação é feita pelo backend ou no browser e qual o formato. Se o servidor gerar ficheiros:
 - endpoint de criação de exportação e estado do job;
 - formatos suportados (por exemplo, ZIP React/Tailwind e/ou HTML/CSS/JS);
@@ -80,19 +93,17 @@ Não apresentar um botão como funcional até existir a rota e o fluxo de erro/s
 4. O frontend acompanha o job até estado terminal e mostra progresso real.
 5. O crawler descobre múltiplas páginas internas, respeitando limites e segurança.
 6. O relatório lista páginas, assets, interacções testadas, erros e limitações.
-7. O editor carrega o Page Model real, altera-o e guarda; ao recarregar, as alterações persistem.
+7. O editor carrega o Page Model real, altera-o e guarda; ao recarregar, as alterações persistem. Confirmado localmente com adapter SQLite e fixture Chromium.
 8. Testes de formulário/quiz usam dados fictícios e não executam conversões reais.
 9. Preview/export só são considerados concluídos após abrir/testar o artefacto produzido.
 10. Utilizador A não consegue ler, alterar ou descarregar recursos do utilizador B.
 
-## 6. Evidência a pedir ao Manus
+## 6. Evidência e bloqueios remotos
 
-Para fechar a integração, comparar este contrato com:
-- rotas registadas na API;
-- schemas de entrada/saída;
-- configuração CORS e autenticação;
-- um exemplo real de resposta por endpoint;
-- testes automatizados e logs de um crawl de teste;
-- URL base de API disponível para o frontend.
+Para fechar a integração de produção, ainda falta:
+- executar os testes reais de Supabase Auth, PostgreSQL e Storage: o harness foi preparado mas parou antes de qualquer escrita porque `SUPABASE_KEY`/publishable está ausente do container (URL DB e chave administrativa existem);
+- confirmar o domínio canónico do frontend, autorizar essa origem em `CORS_ORIGINS` e fazer deployment das alterações backend após revisão; o preflight da Preview atual devolve `403`;
+- executar o E2E com autenticação Supabase e provar isolamento entre dois utilizadores na instância publicada;
+- definir e implementar exportação se for necessária no produto; listagens de projetos/jobs já existem e estão cobertas por testes locais.
 
 Não colocar tokens, chaves privadas ou credenciais nos exemplos, issues ou documentação.

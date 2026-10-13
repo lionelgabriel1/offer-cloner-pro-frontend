@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
-import { AlertTriangle, ArrowLeft, FileCode2, FileImage, FileText, FolderTree, Search, Server, Sparkles } from 'lucide-react'
+import { useParams, useRouter } from 'next/navigation'
+import { AlertTriangle, ArrowLeft, FileCode2, FileImage, FileText, FolderTree, Pencil, Search, Server, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -22,6 +22,7 @@ type ArtifactAsset = Record<string, unknown> & { localPath?: string; path?: stri
 
 export default function ResultsPage() {
   const { id } = useParams<{ id: string }>()
+  const router = useRouter()
   const [active, setActive] = useState<(typeof tabs)[number]['id']>('overview')
   const [query, setQuery] = useState('')
   const [job, setJob] = useState<CrawlJobStatus | null>(null)
@@ -36,6 +37,8 @@ export default function ResultsPage() {
   const [reportError, setReportError] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [editorCreating, setEditorCreating] = useState(false)
+  const [editorError, setEditorError] = useState('')
 
   useEffect(() => {
     if (!isApiConfigured) { setLoading(false); return }
@@ -80,12 +83,27 @@ export default function ResultsPage() {
   const assets = Array.isArray(pageModel?.assets) ? pageModel.assets as ArtifactAsset[] : []
   const screenshotPaths = selectedPage?.screenshotPaths ?? []
 
+  async function openEditor() {
+    if (!selectedPage || !pageModel || editorCreating) return
+    setEditorCreating(true)
+    setEditorError('')
+    try {
+      const result = await apiClient.createEditorProjectFromCrawl(id, selectedPage.pageKey)
+      router.push(`/editor/${encodeURIComponent(result.project.id)}`)
+    } catch (cause) {
+      setEditorError(cause instanceof Error ? cause.message : 'Não foi possível preparar o editor para esta página.')
+    } finally {
+      setEditorCreating(false)
+    }
+  }
+
   return <div className="min-h-screen bg-background text-foreground">
     <header className="flex h-16 items-center gap-4 border-b border-border px-5 sm:px-8"><Link href={`/crawls/${id}`} aria-label="Voltar ao rastreamento"><Button variant="ghost" size="icon"><ArrowLeft /></Button></Link><div><p className="text-xs text-muted-foreground">Resultados / {id}</p><h1 className="font-semibold">Resultados da análise</h1></div><Badge variant="secondary" className="ml-auto">{job ? job.status : loading ? 'A carregar…' : 'Sem dados'}</Badge></header>
     <main className="mx-auto max-w-6xl px-5 py-7 sm:px-8">
-      <div className="mb-6"><p className="mb-2 text-sm font-medium text-primary">Workspace / Resultados</p><h2 className="text-2xl font-semibold tracking-tight">Explorar análise</h2><p className="mt-1 break-all text-sm text-muted-foreground">{job?.seedUrl ?? 'Os detalhes da análise aparecerão quando a API devolver dados reais.'}</p></div>
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="mb-2 text-sm font-medium text-primary">Workspace / Resultados</p><h2 className="text-2xl font-semibold tracking-tight">Explorar análise</h2><p className="mt-1 break-all text-sm text-muted-foreground">{job?.seedUrl ?? 'Os detalhes da análise aparecerão quando a API devolver dados reais.'}</p></div><Button onClick={openEditor} disabled={!isApiConfigured || !selectedPage || !pageModel || editorCreating} className="gap-2"><Pencil data-icon="inline-start" />{editorCreating ? 'A preparar editor…' : 'Editar página selecionada'}</Button></div>
       {!isApiConfigured && <div className="mb-6 rounded-xl border border-border bg-muted/30 p-4 text-sm text-muted-foreground">A API ainda não está configurada. Esta página não usa resultados de demonstração.</div>}
       {error && <p className="mb-5 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive" role="alert">{error}</p>}
+      {editorError && <p className="mb-5 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive" role="alert">{editorError}</p>}
       <div className="flex gap-1 overflow-x-auto border-b border-border pb-px" role="tablist" aria-label="Secções dos resultados">{tabs.map(tab => { const Icon = tab.icon; return <button key={tab.id} role="tab" aria-selected={active === tab.id} onClick={() => setActive(tab.id)} className={`flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-xs font-medium transition-colors ${active === tab.id ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}><Icon className="size-3.5" />{tab.label}</button> })}</div>
       <section className="mt-6">
         {active === 'overview' && <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Stat label="Estado geral" value={job?.status ?? (loading ? 'A carregar…' : 'Sem dados')} detail={job?.finishedAt ? `Concluída ${new Date(job.finishedAt).toLocaleString()}` : `${job?.progress?.percentage ?? 0}% de progresso`} /><Stat label="Páginas" value={String(pageResponse?.pagination.total ?? 0)} detail={`${job?.progress?.pages.analyzed ?? 0} analisadas`} /><Stat label="Recursos" value={String(job?.progress?.assets.found ?? 0)} detail={`${job?.progress?.assets.downloaded ?? 0} descarregados`} /><Stat label="Relatório" value={isApiConfigured ? 'A consultar' : 'Não disponível'} detail={siteModel?.limitations?.length ? `${siteModel.limitations.length} limitações` : 'JSON e Markdown'} /></div>}

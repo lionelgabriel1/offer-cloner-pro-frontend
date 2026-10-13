@@ -131,7 +131,6 @@ export default function Page() {
             <div className="flex items-center gap-2 text-xs text-muted-foreground"><span>Workspace</span><span className="text-border">/</span><span className="text-foreground">Visão geral</span></div>
           </div>
           <div className="flex items-center gap-2">
-            
             <Button variant="outline" size="sm" className="hidden gap-2 sm:inline-flex" onClick={() => router.push('/documentation')}><CircleHelp className="size-3.5" /> Ajuda</Button>
           </div>
         </header>

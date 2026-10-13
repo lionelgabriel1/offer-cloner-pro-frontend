@@ -24,7 +24,7 @@ describe('cliente API protegido', () => {
   })
 
   it('usa a resposta real de /health', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } }))
     await expect(createApiClient('https://api.test').checkHealth()).resolves.toEqual({ ok: true })
   })
 
@@ -56,6 +56,20 @@ describe('cliente API protegido', () => {
     }))
     const request = fetchMock.mock.calls[0][1]
     expect(new Headers(request?.headers).get('Authorization')).toBe('Bearer token-test')
+  })
+
+  it('envia as opções de retoma no formato direto esperado pela API', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ jobId: 'job-1', status: 'running' }), { status: 202, headers: { 'content-type': 'application/json' } }))
+    await createApiClient('https://api.test').resumeCrawlJob('job-1', { maxDepth: 2 }, 'token-test')
+    expect(fetchMock).toHaveBeenCalledWith('https://api.test/api/crawl-jobs/job-1/resume', expect.objectContaining({ method: 'POST', body: JSON.stringify({ maxDepth: 2 }) }))
+  })
+
+  it('cria um projeto editor a partir do Page Model do crawl com Bearer token', async () => {
+    const response = { project: { id: 'project-1', sourceUrl: 'https://example.com/', status: 'ready' }, model: { projectId: 'project-1' } }
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(response), { status: 201, headers: { 'content-type': 'application/json' } }))
+    await expect(createApiClient('https://api.test').createEditorProjectFromCrawl('job-1', 'page/key', 'token-test')).resolves.toEqual(response)
+    expect(fetchMock).toHaveBeenCalledWith('https://api.test/api/crawl-jobs/job-1/editor-project', expect.objectContaining({ method: 'POST', body: JSON.stringify({ pageKey: 'page/key' }) }))
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get('Authorization')).toBe('Bearer token-test')
   })
 
   it.each([[401, 'Sessão ausente ou expirada.'], [403, 'Não tens acesso a este recurso ou origem.'], [404, 'Recurso não encontrado.'], [422, 'A operação foi rejeitada. Verifica o URL e as opções.'], [503, 'Serviço temporariamente indisponível.']])('mapeia HTTP %s sem expor resposta do servidor', async (status, message) => {
@@ -93,6 +107,19 @@ describe('cliente API protegido', () => {
     await createApiClient('https://api.test').getHealth()
     const request = fetchMock.mock.calls[0][1]
     expect(new Headers(request?.headers).has('Authorization')).toBe(false)
+  })
+
+  it('lista projetos e crawls com paginação e Bearer token', async () => {
+    const pagination = { offset: 2, limit: 5, total: 8, hasMore: true }
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ jobs: [], pagination }), { status: 200, headers: { 'content-type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ projects: [], pagination }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    const client = createApiClient('https://api.test')
+    await expect(client.listCrawlJobs({ offset: 2, limit: 5 }, 'token-test')).resolves.toEqual({ jobs: [], pagination })
+    await expect(client.listProjects({ offset: 2, limit: 5 }, 'token-test')).resolves.toEqual({ projects: [], pagination })
+    expect(fetchMock.mock.calls[0][0]).toBe('https://api.test/api/crawl-jobs?offset=2&limit=5')
+    expect(fetchMock.mock.calls[1][0]).toBe('https://api.test/api/projects?offset=2&limit=5')
+    for (const [, request] of fetchMock.mock.calls) expect(new Headers(request?.headers).get('Authorization')).toBe('Bearer token-test')
   })
 })
 

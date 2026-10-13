@@ -6,6 +6,8 @@ This note records gaps visible from the frontend API client. It is not a claim t
 
 The frontend currently calls:
 
+- `GET /api/projects?offset=&limit=` for the authenticated user's paginated project history.
+- `GET /api/crawl-jobs?offset=&limit=` for the authenticated user's paginated crawl history.
 - `POST /api/crawl-jobs` with `{ url }`.
 - `GET /api/crawl-jobs/:id`.
 - `GET /api/crawl-jobs/:id/pages` with pagination and an optional page status.
@@ -14,18 +16,19 @@ The frontend currently calls:
 - `GET /api/crawl-jobs/:id/report`.
 - `GET /api/crawl-jobs/:id/artifacts?path=...`.
 - `POST /api/crawl-jobs/:id/cancel`.
-- `POST /api/crawl-jobs/:id/resume` with an `options` object.
+- `POST /api/crawl-jobs/:id/resume` with crawl option overrides as the request body (do not wrap them in `{ options }`).
+- `POST /api/crawl-jobs/:id/editor-project` with `{ pageKey }` to create an owned editor project from a persisted crawl Page Model.
 - `GET /api/projects/:id/editor`.
 - `PUT /api/projects/:id/editor/model` with `{ model }`.
 
-## Work needed to expose full-site crawl controls
+## Confirmed behaviour and remaining gaps
 
-1. Confirm that a new crawl follows eligible same-site internal links and returns per-page status, depth, and discovered-link counts.
-2. If configurable, define and document the accepted create-job options (for example, maximum pages and maximum depth) before adding controls to the URL form. The current frontend deliberately sends only `{ url }`.
-3. Define how the backend reports interaction exploration, discovered form/quiz steps, and limitations. Automated exploration must use fictitious values and must not submit real leads, make purchases, or trigger irreversible actions.
-4. Define how the UI can list all jobs and projects for the current user. The current frontend has no confirmed aggregate list endpoint, so its list pages must not fabricate history or metrics.
-5. Confirm export/preview capabilities and their endpoint contracts before presenting them as available actions.
-6. Document authentication, authorization, pagination, rate limits, and error response formats for each new endpoint.
+- Local controlled E2E has verified a real Chromium crawl across two localhost fixture pages, Page Model retrieval, `POST .../editor-project`, editor model update, report/artifact reads and persistence after restarting the API adapters. This does not validate Supabase or a deployed Hetzner API.
+- The backend contract accepts crawl option overrides; the frontend currently sends only `{ url }` for new jobs. Keep advanced controls out until their UI/limits are explicitly designed.
+- Synthetic quiz/form exploration is covered by backend tests and must never submit to real services. The report should continue to distinguish reached states from blocked/inaccessible steps.
+- Project and crawl history are now exposed through owner-filtered paginated endpoints. The frontend list pages consume these responses and do not fabricate history or metrics.
+- JSON and Markdown reports are available, but a generated ZIP/React export endpoint is not confirmed. Do not show export as complete.
+- Real Supabase Auth/PostgreSQL/Storage integration and the Hetzner API URL/CORS are still unvalidated in this environment.
 
 ## Frontend behaviour
 

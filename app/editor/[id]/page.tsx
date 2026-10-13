@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { apiClient, isApiConfigured, type EditorDomNode, type PageModel } from '@/lib/api'
+import { isSafePreviewCssValue, safePreviewUrl } from '@/lib/preview-safety'
 
 type VisualNode = EditorDomNode & { children?: VisualNode[] }
 type Viewport = 'desktop' | 'tablet' | 'mobile'
@@ -116,7 +117,7 @@ export default function EditorPage() {
   })
   const updateStyle = (key: string, value: string) => {
     // Keep inline CSS values simple and predictable; styles are data from a captured external page.
-    if (value.length > 160 || /[<>;]/.test(value)) return
+    if (!isSafePreviewCssValue(value)) return
     updateSelectedNode((node) => {
       node.styles = { ...(node.styles ?? {}), [key]: value }
     })
@@ -153,7 +154,9 @@ export default function EditorPage() {
 
   const renderPreview = (node: VisualNode, depth = 0): ReactNode => {
     const allowed = new Set(['main','div','section','header','footer','nav','article','aside','h1','h2','h3','h4','h5','h6','p','span','strong','em','small','ul','ol','li','a','button','img','video','form','label','input','textarea','blockquote'])
-    const tag = allowed.has(node.tag.toLowerCase()) ? node.tag.toLowerCase() : 'div'
+    const originalTag = node.tag.toLowerCase()
+    // Render captured forms as inert containers so Enter/click cannot submit anything.
+    const tag = originalTag === 'form' ? 'div' : allowed.has(originalTag) ? originalTag : 'div'
     const sourceStyles = node.styles ?? {}
     const styleMap: Record<string, string> = {
       display: 'display', position: 'position', width: 'width', height: 'height',
@@ -174,7 +177,7 @@ export default function EditorPage() {
     for (const [sourceKey, targetKey] of Object.entries(styleMap)) {
       const kebabKey = sourceKey.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
       const value = sourceStyles[sourceKey] ?? sourceStyles[targetKey] ?? sourceStyles[kebabKey]
-      if (typeof value === 'string' && value.length < 160) (style as Record<string, string>)[targetKey] = value
+      if (isSafePreviewCssValue(value)) (style as Record<string, string>)[targetKey] = value
     }
     const attrs = node.attributes ?? {}
     const className = previewOnly ? '' : selectedId === node.uid ? 'outline outline-2 outline-blue-500 outline-offset-2' : 'hover:outline hover:outline-1 hover:outline-blue-300'
@@ -182,17 +185,19 @@ export default function EditorPage() {
     const text = children.length ? null : node.text
     const onClick = (event: MouseEvent<HTMLElement>) => { event.preventDefault(); event.stopPropagation(); if (!previewOnly) setSelectedId(node.uid) }
     if (tag === 'img') {
-      const src = attrs.src || attrs['data-src'] || attrs['data-lazy-src'] || attrs['srcset']?.split(',')[0]?.trim().split(' ')[0]
-      return <img key={node.uid} src={src} alt={attrs.alt || ''} onClick={onClick} className={className} style={{ ...style, maxWidth: style.maxWidth ?? '100%', objectFit: style.objectFit ?? 'contain' }} />
+      const rawSrc = attrs.src || attrs['data-src'] || attrs['data-lazy-src'] || attrs['srcset']?.split(',')[0]?.trim().split(' ')[0]
+      const src = safePreviewUrl(rawSrc)
+      if (!src) return <div key={node.uid} onClick={onClick} className={className} style={{ ...style, minHeight: 40 }}>Imagem indisponível no preview</div>
+      return <img key={node.uid} src={src} alt={attrs.alt || ''} referrerPolicy="no-referrer" onClick={onClick} className={className} style={{ ...style, maxWidth: style.maxWidth ?? '100%', objectFit: style.objectFit ?? 'contain' }} />
     }
     if (tag === 'input') return <input key={node.uid} readOnly value={attrs.value || ''} placeholder={attrs.placeholder || ''} type={attrs.type || 'text'} onClick={onClick} className={className} style={style} />
     if (tag === 'textarea') return <textarea key={node.uid} readOnly value={text || attrs.value || ''} placeholder={attrs.placeholder || ''} onClick={onClick} className={className} style={style} />
-    if (tag === 'a') return <a key={node.uid} href={attrs.href || "#"} onClick={onClick} className={className} style={style}>{text}{children}</a>
+    if (tag === 'a') return <a key={node.uid} href={safePreviewUrl(attrs.href) ?? '#'} rel="noreferrer" onClick={onClick} className={className} style={style}>{text}{children}</a>
     if (tag === 'button') return <button key={node.uid} type="button" onClick={onClick} className={className} style={style}>{text}{children}</button>
     if (tag === 'video') {
-      const src = attrs.src || attrs['data-src']
-      if (typeof src === 'string' && /^(https?:\/\/|\/)/i.test(src)) {
-        return <video key={node.uid} src={src} controls onClick={onClick} className={className} style={{ ...style, maxWidth: '100%' }}>O teu navegador não suporta este vídeo.</video>
+      const src = safePreviewUrl(attrs.src || attrs['data-src'])
+      if (src) {
+        return <video key={node.uid} src={src} controls ref={element => { if (element) element.setAttribute('referrerpolicy', 'no-referrer') }} onClick={onClick} className={className} style={{ ...style, maxWidth: '100%' }}>O teu navegador não suporta este vídeo.</video>
       }
       return <div key={node.uid} onClick={onClick} className={className} style={{ ...style, minHeight: 100, background: '#171717', color: '#d4d4d4', display: 'grid', placeItems: 'center' }}>Vídeo não disponível na captura</div>
     }

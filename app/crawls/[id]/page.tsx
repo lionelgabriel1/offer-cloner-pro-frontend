@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { apiClient, isApiConfigured, type CrawlJobStatus, type CrawlPageListResponse, type SitePage } from '@/lib/api'
 
 type SiteModelView = { errors?: string[]; limitations?: string[] }
-const labels: Record<string, string> = { queued: 'Na fila', running: 'A analisar', paused: 'Pausada', cancelled: 'Cancelada', completed: 'Concluída', partial: 'Parcial', failed: 'Falhou', analyzed: 'Analisada', in_progress: 'Em análise', pending: 'Pendente', ignored: 'Ignorada' }
+const labels: Record<string, string> = { queued: 'Na fila', running: 'A analisar', cancelling: 'A cancelar', paused: 'Pausada', cancelled: 'Cancelada', completed: 'Concluída', partial: 'Parcial', failed: 'Falhou', analyzed: 'Analisada', in_progress: 'Em análise', pending: 'Pendente', ignored: 'Ignorada' }
 const terminal = (status: string) => ['completed', 'partial', 'failed', 'paused', 'cancelled'].includes(status)
 
 export default function CrawlPage() {
@@ -24,6 +24,7 @@ export default function CrawlPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [actionBusy, setActionBusy] = useState(false)
 
   useEffect(() => {
     if (!isApiConfigured) { setLoading(false); return }
@@ -49,27 +50,37 @@ export default function CrawlPage() {
   useEffect(() => {
     if (!isApiConfigured || !job || terminal(job.status)) return
     let alive = true
-    const timer = setInterval(async () => {
+    let timer: ReturnType<typeof setTimeout>
+    const poll = async () => {
       try {
-        const latest = await apiClient.getCrawlJob(id)
-        const nextPages = await apiClient.listPages(id, { offset, limit: 10 })
+        const [latest, nextPages] = await Promise.all([apiClient.getCrawlJob(id), apiClient.listPages(id, { offset, limit: 10 })])
+        const nextModel = terminal(latest.status) ? await apiClient.getSiteModel(id) : undefined
         if (!alive) return
         setJob(latest)
         setPageResponse(nextPages)
         setPages(nextPages.pages)
+        if (nextModel) setSiteModel(nextModel as SiteModelView)
         setError('')
       } catch (cause) { if (alive) setError(cause instanceof Error ? cause.message : 'Não foi possível atualizar o progresso.') }
-    }, 2500)
-    return () => { alive = false; clearInterval(timer) }
+      finally { if (alive) timer = setTimeout(poll, 2500) }
+    }
+    timer = setTimeout(poll, 2500)
+    return () => { alive = false; clearTimeout(timer) }
   }, [id, job?.status, offset])
 
   async function cancel() {
-    try { await apiClient.cancelCrawlJob(id); setMessage('Cancelamento pedido; a ação de browser em curso pode terminar antes.'); setError(''); setRefreshKey(value => value + 1) }
+    if (actionBusy) return
+    setActionBusy(true)
+    try { const response = await apiClient.cancelCrawlJob(id); setMessage(response.message ?? 'Cancelamento pedido; a ação de browser em curso pode terminar antes.'); setError(''); setRefreshKey(value => value + 1) }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível cancelar o rastreamento.') }
+    finally { setActionBusy(false) }
   }
   async function resume() {
-    try { await apiClient.resumeCrawlJob(id, job?.options ?? {}); setMessage('Retoma iniciada.'); setError(''); setRefreshKey(value => value + 1) }
+    if (actionBusy) return
+    setActionBusy(true)
+    try { const response = await apiClient.resumeCrawlJob(id, job?.options ?? {}); setMessage(`Retoma iniciada (${labels[response.status] ?? response.status}).`); setError(''); setRefreshKey(value => value + 1) }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível retomar o rastreamento.') }
+    finally { setActionBusy(false) }
   }
 
   const status = job ? labels[job.status] ?? job.status : loading ? 'A carregar…' : 'Sem dados'
@@ -86,7 +97,7 @@ export default function CrawlPage() {
     <main className="mx-auto max-w-6xl px-5 py-7 sm:px-8">
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div><p className="mb-2 text-sm font-medium text-primary">Tarefa de rastreamento</p><h2 className="break-all text-2xl font-semibold tracking-tight">{job?.seedUrl ?? (loading ? 'A carregar URL…' : 'URL indisponível')}</h2><p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground"><Globe2 className="size-4" />{job ? `Criada ${new Date(job.createdAt).toLocaleString()}` : 'Estado consultado pela API protegida'}</p></div>
-        <div className="flex gap-2"><Button variant="outline" className="gap-2" onClick={() => setRefreshKey(value => value + 1)} disabled={loading}><RefreshCw data-icon="inline-start" /> Atualizar</Button>{job && ['queued', 'running'].includes(job.status) && <Button variant="outline" onClick={cancel}>Cancelar</Button>}{job && ['paused', 'cancelled'].includes(job.status) && <Button variant="outline" onClick={resume}>Retomar</Button>}</div>
+        <div className="flex gap-2"><Button variant="outline" className="gap-2" onClick={() => setRefreshKey(value => value + 1)} disabled={loading || actionBusy}><RefreshCw data-icon="inline-start" /> Atualizar</Button>{job && ['queued', 'running'].includes(job.status) && <Button variant="outline" onClick={cancel} disabled={actionBusy}>{actionBusy ? 'A cancelar…' : 'Cancelar'}</Button>}{job && ['paused', 'cancelled'].includes(job.status) && <Button variant="outline" onClick={resume} disabled={actionBusy}>{actionBusy ? 'A retomar…' : 'Retomar'}</Button>}</div>
       </div>
       {!isApiConfigured && <div className="mb-6 rounded-xl border border-border bg-muted/30 p-4 text-sm text-muted-foreground">A API ainda não está configurada. Não são apresentados resultados fictícios.</div>}
       {message && <p className="mb-4 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm text-primary" role="status">{message}</p>}
