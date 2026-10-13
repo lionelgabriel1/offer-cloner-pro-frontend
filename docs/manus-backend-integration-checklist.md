@@ -5,7 +5,7 @@ Este documento separa o que o frontend já chama do que ainda precisa de confirm
 ## 1. Configuração do frontend
 
 Variáveis usadas pelo frontend:
-- `NEXT_PUBLIC_API_BASE_URL`: URL base da API Manus, sem depender de uma rota específica.
+- `NEXT_PUBLIC_API_BASE_URL`: URL base da API, sem depender de uma rota específica. A origem observada é `https://offer-cloner-api.duckdns.org`; configurar este valor no ambiente Vercel.
 - `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: autenticação Supabase, quando usada.
 
 O cliente envia `Authorization: Bearer <access_token>` nas chamadas autenticadas, excepto no health check. O backend tem de aceitar o token Supabase e validar utilizador/propriedade do recurso. Não colocar chaves secretas no frontend.
@@ -30,7 +30,7 @@ O cliente envia `Authorization: Bearer <access_token>` nas chamadas autenticadas
 | GET | `/api/projects/:id/editor` | `{ "project": {...}, "model": PageModel }` |
 | PUT | `/api/projects/:id/editor/model` | Entrada `{ "model": PageModel }`; resposta `{ "ok": true, "status": "edited", "model": PageModel }` |
 
-As rotas foram confirmadas no código da API e no OpenAPI. O frontend deve usar um JWT Bearer obtido da sessão Supabase Auth para todas as rotas excepto `/health`; a confirmação local não prova que uma instância Hetzner esteja publicada ou corretamente configurada.
+As rotas foram confirmadas no código da API e no OpenAPI. O frontend deve usar um JWT Bearer obtido da sessão Supabase Auth para todas as rotas excepto `/health`. Na VPS, o health HTTPS respondeu `200` e uma chamada sem Bearer foi recusada com `401`; porém, o preflight CORS da Preview Vercel respondeu `403`, e as rotas novas da PR #2 ainda não estão no container publicado.
 
 ## 2.1 Fluxo crawl → editor
 
@@ -101,9 +101,9 @@ Não apresentar um botão como funcional até existir a rota e o fluxo de erro/s
 ## 6. Evidência e bloqueios remotos
 
 Para fechar a integração de produção, ainda falta:
-- executar os testes reais de Supabase Auth, PostgreSQL e Storage com credenciais privadas de servidor;
-- confirmar a URL HTTPS Hetzner e a allowlist CORS para as origens Vercel/Lovable;
-- executar o E2E com autenticação Supabase e provar isolamento entre dois utilizadores;
+- executar os testes reais de Supabase Auth, PostgreSQL e Storage: o harness foi preparado mas parou antes de qualquer escrita porque `SUPABASE_KEY`/publishable está ausente do container (URL DB e chave administrativa existem);
+- confirmar o domínio canónico do frontend, autorizar essa origem em `CORS_ORIGINS` e fazer deployment das alterações backend após revisão; o preflight da Preview atual devolve `403`;
+- executar o E2E com autenticação Supabase e provar isolamento entre dois utilizadores na instância publicada;
 - definir e implementar exportação se for necessária no produto; listagens de projetos/jobs já existem e estão cobertas por testes locais.
 
 Não colocar tokens, chaves privadas ou credenciais nos exemplos, issues ou documentação.
