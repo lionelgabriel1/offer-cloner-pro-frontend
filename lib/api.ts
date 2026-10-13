@@ -15,6 +15,12 @@ export type ProjectEditorResponse = { project: { id: string; sourceUrl: string; 
 export type UpdateProjectModelResponse = { ok: true; status: 'edited'; model: PageModel }
 export type CreateEditorProjectResponse = { project: { id: string; sourceUrl: string; status: string }; model: PageModel }
 export type CrawlActionResponse = { jobId: string; status: string; progress?: Progress | null; message?: string }
+export type Pagination = { offset: number; limit: number; total: number; hasMore: boolean }
+export type ListParams = { offset?: number; limit?: number }
+export type ProjectListItem = { id: string; sourceUrl: string; status: string; createdAt: string; updatedAt: string }
+export type ProjectListResponse = { projects: ProjectListItem[]; pagination: Pagination }
+export type CrawlJobListItem = { jobId: string; siteId: string; seedUrl: string; status: CrawlStatus; createdAt: string; updatedAt: string; finishedAt?: string; coverage: { discovered: number; analyzed: number; pending: number; ignored: number; failed: number } }
+export type CrawlJobListResponse = { jobs: CrawlJobListItem[]; pagination: Pagination }
 
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -36,6 +42,12 @@ export type ApiClient = ReturnType<typeof createApiClient>
 
 export function createApiClient(baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? process.env.VITE_API_BASE_URL) {
   const configured = Boolean(baseUrl)
+  const listQuery = (params: ListParams = {}) => {
+    const query = new URLSearchParams()
+    query.set('offset', String(params.offset ?? 0))
+    query.set('limit', String(params.limit ?? 20))
+    return query.toString()
+  }
   async function request<T>(path: string, token?: string, init?: RequestInit, responseType: 'json' | 'text' | 'blob' = 'json', authenticate = true): Promise<T> {
     if (!baseUrl) throw new Error('API não configurada: defina NEXT_PUBLIC_API_BASE_URL.')
     let accessToken = token
@@ -62,6 +74,8 @@ export function createApiClient(baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?
     configured,
     checkHealth: () => request<HealthResponse>('/health', undefined, undefined, 'json', false),
     getHealth: () => request<HealthResponse>('/health', undefined, undefined, 'json', false),
+    listProjects: (params: ListParams = {}, token?: string) => request<ProjectListResponse>(`/api/projects?${listQuery(params)}`, token),
+    listCrawlJobs: (params: ListParams = {}, token?: string) => request<CrawlJobListResponse>(`/api/crawl-jobs?${listQuery(params)}`, token),
     cancelCrawlJob: (id: string, token?: string) => request<CrawlActionResponse>(`/api/crawl-jobs/${encodeURIComponent(id)}/cancel`, token, { method: 'POST' }),
     resumeCrawlJob: (id: string, options: Record<string, unknown> = {}, token?: string) => request<CrawlActionResponse>(`/api/crawl-jobs/${encodeURIComponent(id)}/resume`, token, { method: 'POST', body: JSON.stringify(options) }),
     createCrawlJob: (url: string, token?: string) => request<CreateCrawlJobResponse>('/api/crawl-jobs', token, { method: 'POST', body: JSON.stringify({ url }) }),

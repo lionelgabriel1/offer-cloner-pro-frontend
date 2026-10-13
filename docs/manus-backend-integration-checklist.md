@@ -15,6 +15,8 @@ O cliente envia `Authorization: Bearer <access_token>` nas chamadas autenticadas
 | Método | Rota | Contrato esperado |
 |---|---|---|
 | GET | `/health` | `{ "ok": true }` |
+| GET | `/api/projects?offset=0&limit=20` | Lista paginada de projetos próprios: `{ projects, pagination }`; `limit` máximo 100 |
+| GET | `/api/crawl-jobs?offset=0&limit=20` | Lista paginada de crawls próprios: `{ jobs, pagination }`; status e cobertura resumida |
 | POST | `/api/crawl-jobs` | Entrada actual: `{ "url": "https://..." }`; resposta com `jobId`, `siteId`, `status`, `progress`, `links` |
 | GET | `/api/crawl-jobs/:id` | Estado, URL inicial, opções, progresso e timestamps |
 | GET | `/api/crawl-jobs/:id/pages?offset=&limit=&status=` | Lista paginada de páginas descobertas/analisadas |
@@ -59,8 +61,8 @@ Este caminho passou um E2E local com Chromium numa fixture exclusiva de `localho
 - Reportar estados alcançados e não alcançados, motivo, limites e confiança; não declarar um fluxo completo quando só se viu o primeiro passo.
 - O relatório deve distinguir links descobertos de transições efectivamente testadas.
 
-### C. Listagem de projectos e jobs — em falta
-O frontend ainda não tem um contrato confirmado para listagem agregada. Definir endpoints paginados, filtrados pelo utilizador autenticado, para projectos e jobs recentes. Não expor recursos de outro utilizador.
+### C. Listagem de projectos e jobs — implementada localmente
+`GET /api/projects` e `GET /api/crawl-jobs` aceitam `offset` e `limit` (1–100, default 20), filtram por `owner_id` proveniente do Bearer token verificado e devolvem `pagination: { offset, limit, total, hasMore }`. As páginas `/projects` e `/crawls` consomem as respostas reais. Testes HTTP locais cobrem utilizadores distintos e paginação; a mesma query Postgres/Supabase ainda depende da execução da integração remota com credenciais privadas.
 
 ### D. Preview e exportação — exportação de projeto em falta
 Definir se a exportação é feita pelo backend ou no browser e qual o formato. Se o servidor gerar ficheiros:
@@ -102,6 +104,6 @@ Para fechar a integração de produção, ainda falta:
 - executar os testes reais de Supabase Auth, PostgreSQL e Storage com credenciais privadas de servidor;
 - confirmar a URL HTTPS Hetzner e a allowlist CORS para as origens Vercel/Lovable;
 - executar o E2E com autenticação Supabase e provar isolamento entre dois utilizadores;
-- definir endpoints de listagem/exportação se forem necessários no produto.
+- definir e implementar exportação se for necessária no produto; listagens de projetos/jobs já existem e estão cobertas por testes locais.
 
 Não colocar tokens, chaves privadas ou credenciais nos exemplos, issues ou documentação.

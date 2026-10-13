@@ -6,6 +6,8 @@ This note records gaps visible from the frontend API client. It is not a claim t
 
 The frontend currently calls:
 
+- `GET /api/projects?offset=&limit=` for the authenticated user's paginated project history.
+- `GET /api/crawl-jobs?offset=&limit=` for the authenticated user's paginated crawl history.
 - `POST /api/crawl-jobs` with `{ url }`.
 - `GET /api/crawl-jobs/:id`.
 - `GET /api/crawl-jobs/:id/pages` with pagination and an optional page status.
@@ -24,7 +26,7 @@ The frontend currently calls:
 - Local controlled E2E has verified a real Chromium crawl across two localhost fixture pages, Page Model retrieval, `POST .../editor-project`, editor model update, report/artifact reads and persistence after restarting the API adapters. This does not validate Supabase or a deployed Hetzner API.
 - The backend contract accepts crawl option overrides; the frontend currently sends only `{ url }` for new jobs. Keep advanced controls out until their UI/limits are explicitly designed.
 - Synthetic quiz/form exploration is covered by backend tests and must never submit to real services. The report should continue to distinguish reached states from blocked/inaccessible steps.
-- No confirmed aggregate list endpoint for all jobs/projects is exposed to the frontend; do not fabricate history or metrics.
+- Project and crawl history are now exposed through owner-filtered paginated endpoints. The frontend list pages consume these responses and do not fabricate history or metrics.
 - JSON and Markdown reports are available, but a generated ZIP/React export endpoint is not confirmed. Do not show export as complete.
 - Real Supabase Auth/PostgreSQL/Storage integration and the Hetzner API URL/CORS are still unvalidated in this environment.
 

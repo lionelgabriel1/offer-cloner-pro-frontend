@@ -108,6 +108,19 @@ describe('cliente API protegido', () => {
     const request = fetchMock.mock.calls[0][1]
     expect(new Headers(request?.headers).has('Authorization')).toBe(false)
   })
+
+  it('lista projetos e crawls com paginação e Bearer token', async () => {
+    const pagination = { offset: 2, limit: 5, total: 8, hasMore: true }
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ jobs: [], pagination }), { status: 200, headers: { 'content-type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ projects: [], pagination }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    const client = createApiClient('https://api.test')
+    await expect(client.listCrawlJobs({ offset: 2, limit: 5 }, 'token-test')).resolves.toEqual({ jobs: [], pagination })
+    await expect(client.listProjects({ offset: 2, limit: 5 }, 'token-test')).resolves.toEqual({ projects: [], pagination })
+    expect(fetchMock.mock.calls[0][0]).toBe('https://api.test/api/crawl-jobs?offset=2&limit=5')
+    expect(fetchMock.mock.calls[1][0]).toBe('https://api.test/api/projects?offset=2&limit=5')
+    for (const [, request] of fetchMock.mock.calls) expect(new Headers(request?.headers).get('Authorization')).toBe('Bearer token-test')
+  })
 })
 
 describe('diagnóstico de integração', () => {
